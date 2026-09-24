@@ -200,3 +200,22 @@ def test_rendered_export_moves_sound_between_ears(client, ready_project, tmp_pat
     frames = y[: len(y) // frame * frame].reshape(-1, frame, 2)
     ild = 10 * np.log10((frames[:, :, 0] ** 2).sum(1) / (frames[:, :, 1] ** 2).sum(1))
     assert ild.max() - ild.min() > 6
+
+
+@pytest.mark.parametrize("name", ["classic", "singer", "dual", "tumble"])
+def test_presets_endpoint_returns_valid_scenes(client, name):
+    resp = client.get(f"/api/presets/{name}", params={"bars": 2})
+    assert resp.status_code == 200
+    scene = Scene.model_validate(resp.json())
+    assert any(t.orbit.speed.bars == 2 for t in scene.tracks.values())
+
+
+def test_presets_endpoint_rejects_bad_input(client):
+    assert client.get("/api/presets/chaos").status_code == 404
+    assert client.get("/api/presets/classic", params={"bars": 3}).status_code == 422
+
+
+def test_scene_schema_exposes_parameter_ranges(client):
+    schema = client.get("/api/scene/schema").json()
+    radius = schema["$defs"]["Orbit"]["properties"]["radius_m"]
+    assert radius["minimum"] == 0.5 and radius["maximum"] == 4.0

@@ -1,0 +1,136 @@
+{
+ "version": 1,
+ "sample_rate": 44100,
+ "samples": 8192,
+ "channels": [
+  "vocals_hi",
+  "bass_hi",
+  "drums_hi_L",
+  "drums_hi_R",
+  "other_hi_L",
+  "other_hi_R",
+  "bass_sub",
+  "drums_sub",
+  "other_sub"
+ ],
+ "scene": {
+  "version": 1,
+  "tracks": {
+   "vocals": {
+    "orbit": {
+     "shape": "circle",
+     "radius_m": 1.2,
+     "speed": {
+      "mode": "seconds",
+      "bars": 4,
+      "seconds": 2.0
+     },
+     "direction": "cw",
+     "start_deg": 0.0,
+     "height_deg": 20.0,
+     "pitch_deg": 15.0,
+     "roll_deg": 0.0,
+     "yaw_deg": 0.0,
+     "aspect": 0.6,
+     "swing_deg": 120.0,
+     "lift_deg": 30.0
+    },
+    "gain_db": 0.0,
+    "width_deg": 0.0,
+    "reverb_send": 1.0,
+    "mute": false,
+    "solo": false
+   },
+   "drums": {
+    "orbit": {
+     "shape": "ellipse",
+     "radius_m": 0.7,
+     "speed": {
+      "mode": "bars",
+      "bars": 4,
+      "seconds": 7.0
+     },
+     "direction": "ccw",
+     "start_deg": 0.0,
+     "height_deg": 0.0,
+     "pitch_deg": 0.0,
+     "roll_deg": 0.0,
+     "yaw_deg": 0.0,
+     "aspect": 0.5,
+     "swing_deg": 120.0,
+     "lift_deg": 30.0
+    },
+    "gain_db": -3.0,
+    "width_deg": 50.0,
+    "reverb_send": 0.4,
+    "mute": false,
+    "solo": false
+   },
+   "bass": {
+    "orbit": {
+     "shape": "fixed",
+     "radius_m": 2.0,
+     "speed": {
+      "mode": "bars",
+      "bars": 4,
+      "seconds": 7.0
+     },
+     "direction": "cw",
+     "start_deg": 45.0,
+     "height_deg": -10.0,
+     "pitch_deg": 0.0,
+     "roll_deg": 0.0,
+     "yaw_deg": 0.0,
+     "aspect": 0.6,
+     "swing_deg": 120.0,
+     "lift_deg": 30.0
+    },
+    "gain_db": 0.0,
+    "width_deg": 0.0,
+    "reverb_send": 0.0,
+    "mute": false,
+    "solo": false
+   },
+   "other": {
+    "orbit": {
+     "shape": "figure8",
+     "radius_m": 1.2,
+     "speed": {
+      "mode": "bars",
+      "bars": 1,
+      "seconds": 7.0
+     },
+     "direction": "cw",
+     "start_deg": 0.0,
+     "height_deg": 0.0,
+     "pitch_deg": 0.0,
+     "roll_deg": 0.0,
+     "yaw_deg": 30.0,
+     "aspect": 0.6,
+     "swing_deg": 100.0,
+     "lift_deg": 40.0
+    },
+    "gain_db": 0.0,
+    "width_deg": 30.0,
+    "reverb_send": 0.7,
+    "mute": false,
+    "solo": false
+   }
+  },
+  "room": {
+   "name": "hall",
+   "wet_db": -12.0
+  },
+  "rear_darken_db": 9.0
+ },
+ "bpm_norm": 97.5,
+ "t_ref": 0.05,
+ "calibration": {
+  "vocals": 1.1,
+  "drums": 0.6,
+  "bass": 0.9,
+  "other": 0.7,
+  "sub": 0.85
+ },
+ "layout": "float32 LE: inputs[channel][sample], dry_L, dry_R, send"
+}

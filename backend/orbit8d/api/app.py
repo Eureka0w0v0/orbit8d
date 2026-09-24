@@ -24,7 +24,7 @@ from orbit8d.config import REPO_ROOT, SAMPLE_RATE, Settings
 from orbit8d.engine.hrtf import load_grid, to_bytes
 from orbit8d.engine.pipeline import Renderer
 from orbit8d.engine.reverb import ROOMS
-from orbit8d.engine.scene import Scene, canonical_json
+from orbit8d.engine.scene import PRESETS, Scene, canonical_json, preset
 from orbit8d.jobs.states import ExportState, ProjectState
 from orbit8d.jobs.store import ExportRecord, NotFound, ProjectRecord, Store
 from orbit8d.jobs.worker import PREVIEW_DIR, SOURCE_FILE, JobRunner, Separator, safe_name
@@ -39,6 +39,7 @@ FILENAME_HEADER = "x-filename"
 PREVIEW_NAMES = frozenset(
     {"vocals_hi", "bass_hi", "drums_hi", "other_hi", "bass_sub", "drums_sub", "other_sub"}
 )
+BAR_CHOICES = (1, 2, 4, 8)
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 WEB_DIST = REPO_ROOT / "web" / "dist"
 
@@ -118,6 +119,18 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     @app.get("/api/health")
     def health() -> dict:
         return {"ok": True, "version": __version__, "formats": available_formats()}
+
+    @app.get("/api/presets/{name}")
+    def get_preset(name: str, bars: int = 4) -> dict:
+        if name not in PRESETS:
+            raise NotFound(name)
+        if bars not in BAR_CHOICES:
+            raise ApiError(422, "BAD_BARS", f"bars 只能是 {BAR_CHOICES}")
+        return preset(name, bars).model_dump(mode="json")
+
+    @app.get("/api/scene/schema")
+    def scene_schema() -> dict:
+        return Scene.model_json_schema()
 
     @app.post("/api/projects")
     async def create_project(request: Request) -> JSONResponse:

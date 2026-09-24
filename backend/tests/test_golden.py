@@ -5,7 +5,7 @@ import json
 import numpy as np
 
 from orbit8d.engine.orbit import OrbitParams, orbit_position
-from tests.make_golden import ORBIT_FILE
+from tests.make_golden import ORBIT_FILE, RENDER_DATA_FILE, render_case
 
 
 def test_orbit_matches_committed_golden_vectors():
@@ -25,3 +25,11 @@ def test_orbit_matches_committed_golden_vectors():
             np.abs(dist - np.array(case["dist"])).max(),
         )
     assert worst < 1e-9
+
+
+def test_render_matches_committed_golden_case():
+    assert RENDER_DATA_FILE.exists(), "缺少黄金数据：运行 uv run python -m tests.make_golden"
+    _, fresh, _ = render_case()
+    committed = np.frombuffer(RENDER_DATA_FILE.read_bytes(), dtype="<f4")
+    assert fresh.shape == committed.shape
+    assert np.abs(fresh - committed).max() < 1e-6
