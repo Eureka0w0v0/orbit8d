@@ -166,7 +166,7 @@ body:not([data-phase="ready"]) .panel {
 .track-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 16px;
 }
 .track-row {
@@ -183,11 +183,10 @@ body:not([data-phase="ready"]) .panel {
 .track-row.silent {
   opacity: 0.45;
 }
-.track-head {
+.track-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
 }
 .track-name {
   flex: 1;
@@ -507,4 +506,93 @@ body.dragging .dropzone {
   .panel {
     bottom: 80px;
   }
+}
+
+/* 右栏分页头 */
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 10px;
+  font-weight: 700;
+}
+.panel-title {
+  font-size: 14px;
+}
+.segmented.tabs {
+  margin-bottom: 12px;
+}
+.segmented.tabs button.on {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.orbit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.segmented.stack {
+  flex-direction: column;
+}
+
+/* 倾斜盘 */
+.pad-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pad-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tiltpad {
+  width: 132px;
+  height: 132px;
+  flex: none;
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+}
+.pad-ring {
+  fill: rgba(255, 255, 255, 0.03);
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 1;
+}
+.pad-guide {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.pad-label {
+  fill: var(--muted);
+  font-size: 9px;
+}
+.pad-head {
+  fill: rgba(241, 238, 232, 0.75);
+}
+.pad-stem {
+  stroke: color-mix(in srgb, var(--accent) 70%, white);
+  stroke-width: 1.5;
+}
+.pad-dot {
+  fill: #fff;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+/* 精细调节 */
+details.fine {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 8px;
+}
+details.fine summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+details.fine .slider {
+  margin-bottom: 8px;
 }

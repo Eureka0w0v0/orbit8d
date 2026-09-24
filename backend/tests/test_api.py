@@ -223,4 +223,4 @@ def test_scene_schema_exposes_parameter_ranges(client):
 
 def test_presets_list_endpoint(client):
     names = client.get("/api/presets").json()
-    assert names == ["classic", "singer", "dual", "tumble", "single"]
+    assert names == ["classic", "singer", "dual", "tumble", "single", "layers", "diagonal", "cross"]

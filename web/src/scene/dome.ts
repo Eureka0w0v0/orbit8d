@@ -1,17 +1,17 @@
-// 三层半球网格：半透明色带（环绕 / 高度 / 顶层）+ 纬线 + 每 30° 一条经线 + 层名与角度标注。
-// 画在单位半径上，按选中音轨的可视半径整体缩放，让该音轨的轨道正好贴在球面上。
+// 三层半球：只画层与层的分界线（-15° / 0° / 15° / 60°）+ 极淡的色带 + 三个层名。
+// 选中音轨所在的层会微微亮起。按选中音轨的可视半径缩放，使其轨道贴在球面上。
 
 import * as THREE from "three";
-import { LAYERS } from "./layers";
+import { LAYERS, type LayerName } from "./layers";
 import { directionToWorld } from "./mapping";
 
-const SEGMENTS = 96;
-const BAND_OPACITY = 0.07;
-const LINE_OPACITY = 0.32;
-const MERIDIAN_STEP_DEG = 30;
-const LATITUDES = [-15, 0, 15, 30, 45, 60, 75];
-const LABEL_AZ = 45; // 标注放在听者右前方的经线上（默认视角正对这一侧）
-const LABEL_SCALE = 0.11;
+const SEGMENTS = 128;
+const BAND_OPACITY = { idle: 0.015, active: 0.05 }; // 半透明球面前后两层会叠加，所以取得很淡
+const LINE_OPACITY = { boundary: 0.22, equator: 0.34 };
+const BOUNDARIES = [-15, 0, 15, 60];
+const LABEL_AZ = 63; // 层名放在听者右前方（默认视角正对这一侧）
+const LABEL_SCALE = 0.075;
+const LABEL_OPACITY = { idle: 0.45, active: 0.95 };
 
 function textSprite(text: string, color: string): THREE.Sprite {
   const canvas = document.createElement("canvas");
@@ -33,10 +33,6 @@ function textSprite(text: string, color: string): THREE.Sprite {
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
 
-function colorAt(el: number): number {
-  return (LAYERS.find((l) => el >= l.from && el <= l.to) ?? LAYERS[0]).color;
-}
-
 function circleAt(el: number, material: THREE.LineBasicMaterial): THREE.LineLoop {
   const pts: THREE.Vector3[] = [];
   for (let i = 0; i < SEGMENTS; i++) {
@@ -48,46 +44,48 @@ function circleAt(el: number, material: THREE.LineBasicMaterial): THREE.LineLoop
 
 export class Dome {
   readonly group = new THREE.Group();
+  private readonly bands = new Map<LayerName, THREE.MeshBasicMaterial>();
+  private readonly labels = new Map<LayerName, THREE.SpriteMaterial>();
 
   constructor() {
     this.group.name = "layer-dome";
     for (const layer of LAYERS) {
       // SphereGeometry 的 theta 从 +y（头顶）量起：theta = 90° - 仰角
-      const thetaStart = THREE.MathUtils.degToRad(90 - layer.to);
-      const thetaLength = THREE.MathUtils.degToRad(layer.to - layer.from);
+      const material = new THREE.MeshBasicMaterial({
+        color: layer.color,
+        transparent: true,
+        opacity: BAND_OPACITY.idle,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
       const band = new THREE.Mesh(
-        new THREE.SphereGeometry(1, SEGMENTS, 12, 0, Math.PI * 2, thetaStart, thetaLength),
-        new THREE.MeshBasicMaterial({ color: layer.color, transparent: true, opacity: BAND_OPACITY, side: THREE.DoubleSide, depthWrite: false }),
+        new THREE.SphereGeometry(1, SEGMENTS, 12, 0, Math.PI * 2, THREE.MathUtils.degToRad(90 - layer.to), THREE.MathUtils.degToRad(layer.to - layer.from)),
+        material,
       );
       band.renderOrder = -1;
-      this.group.add(band);
-      const mid = directionToWorld(LABEL_AZ + 18, (layer.from + layer.to) / 2);
+      this.bands.set(layer.name, material);
+      const mid = directionToWorld(LABEL_AZ, (layer.from + layer.to) / 2);
       const label = textSprite(layer.label, hex(layer.color));
-      label.position.set(mid.x, mid.y, mid.z).multiplyScalar(1.08);
-      this.group.add(label);
+      label.position.set(mid.x, mid.y, mid.z).multiplyScalar(1.07);
+      this.labels.set(layer.name, label.material);
+      this.group.add(band, label);
     }
-    for (const el of LATITUDES) {
-      const material = new THREE.LineBasicMaterial({ color: colorAt(el), transparent: true, opacity: el === 0 ? LINE_OPACITY * 1.6 : LINE_OPACITY, depthWrite: false });
-      this.group.add(circleAt(el, material));
-      const tick = directionToWorld(LABEL_AZ, el);
-      const label = textSprite(`${el}°`, "#9aa3b5");
-      label.scale.multiplyScalar(0.7);
-      label.position.set(tick.x, tick.y, tick.z).multiplyScalar(1.06);
-      this.group.add(label);
+    for (const el of BOUNDARIES) {
+      const color = (LAYERS.find((l) => el >= l.from && el <= l.to) ?? LAYERS[0]).color;
+      const opacity = el === 0 ? LINE_OPACITY.equator : LINE_OPACITY.boundary;
+      this.group.add(circleAt(el, new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false })));
     }
-    const meridianMaterial = new THREE.LineBasicMaterial({ color: 0x8c96ad, transparent: true, opacity: LINE_OPACITY * 0.6, depthWrite: false });
-    for (let az = 0; az < 360; az += MERIDIAN_STEP_DEG) {
-      const pts: THREE.Vector3[] = [];
-      for (let el = LAYERS[0].from; el <= 90; el += 3) {
-        const v = directionToWorld(az, el);
-        pts.push(new THREE.Vector3(v.x, v.y, v.z));
-      }
-      this.group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), meridianMaterial));
-    }
+    this.setActiveLayer(null);
   }
 
   setRadius(visualRadius: number): void {
     this.group.scale.setScalar(visualRadius);
+  }
+
+  /** 选中音轨所在的层微微提亮，其余保持很淡。 */
+  setActiveLayer(active: LayerName | null): void {
+    for (const [name, material] of this.bands) material.opacity = name === active ? BAND_OPACITY.active : BAND_OPACITY.idle;
+    for (const [name, material] of this.labels) material.opacity = name === active ? LABEL_OPACITY.active : LABEL_OPACITY.idle;
   }
 
   set visible(v: boolean) {

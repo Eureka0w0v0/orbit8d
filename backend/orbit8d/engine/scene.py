@@ -9,12 +9,15 @@ from orbit8d.engine.orbit import OrbitParams, period_seconds
 
 TRACKS = ("vocals", "drums", "bass", "other")
 TrackName = Literal["vocals", "drums", "bass", "other"]
-PRESETS = ("classic", "singer", "dual", "tumble", "single")
+PRESETS = ("classic", "singer", "dual", "tumble", "single", "layers", "diagonal", "cross")
 DEFAULT_WIDTH = {"vocals": 0.0, "drums": 40.0, "bass": 0.0, "other": 40.0}
 DEFAULT_SEND = {"vocals": 1.0, "drums": 0.4, "bass": 0.0, "other": 0.7}
 MAX_BARS = 8
 SINGLE_TURN_S = 12.0  # 参考视频实测：约 12 秒一圈
 SINGLE_WET_DB = -10.0
+LAYER_HEIGHTS = {"surround": 0.0, "height": 35.0, "top": 75.0}  # 与前端 layers.ts 的一键高度一致
+DIAGONAL_TILT = 45.0
+VERTICAL = 90.0
 
 _STRICT = ConfigDict(extra="forbid", allow_inf_nan=False, validate_assignment=True)
 
@@ -112,7 +115,11 @@ def orbit_params(orbit: Orbit, bpm_norm: float) -> OrbitParams:
 
 
 def preset(name: str, default_bars: int) -> Scene:
-    """预设：经典 8D / 歌手绕着你转 / 双环反向 / 上下翻滚 / 单点环绕（参考视频同款：整首歌一个点声源）。"""
+    """预设：经典 8D / 歌手绕着你转 / 双环反向 / 上下翻滚 / 单点环绕（参考视频同款）/
+    三层环绕（三层半球各一条）/ 斜向环绕（两条反向斜 45°）/ 立体交叉（三条互相垂直的环）。
+
+    倾斜统一用“前后倾斜 + 水平转向”表示：前后倾斜 = 翘起的角度，水平转向 = 翘起的方向。
+    """
     if name not in PRESETS:
         raise ValueError(f"未知预设: {name}")
     scene = Scene()
@@ -136,4 +143,19 @@ def preset(name: str, default_bars: int) -> Scene:
             track.width_deg = 0.0
             track.orbit.speed = Speed(mode="seconds", seconds=SINGLE_TURN_S)
         scene.room.wet_db = SINGLE_WET_DB
+    elif name == "layers":
+        t["vocals"].orbit.height_deg = LAYER_HEIGHTS["top"]
+        t["other"].orbit.height_deg = LAYER_HEIGHTS["height"]
+        t["other"].orbit.direction = "ccw"
+        t["drums"].orbit.height_deg = LAYER_HEIGHTS["surround"]
+        t["bass"].orbit.shape = "fixed"
+    elif name == "diagonal":
+        t["vocals"].orbit.pitch_deg, t["vocals"].orbit.yaw_deg = DIAGONAL_TILT, 45.0
+        t["other"].orbit.pitch_deg, t["other"].orbit.yaw_deg = DIAGONAL_TILT, -45.0
+        t["other"].orbit.direction = "ccw"
+        t["bass"].orbit.shape = "fixed"
+    elif name == "cross":
+        t["vocals"].orbit.pitch_deg = VERTICAL  # 左耳 → 头顶 → 右耳
+        t["other"].orbit.pitch_deg, t["other"].orbit.yaw_deg = VERTICAL, 90.0  # 正前 → 头顶 → 脑后
+        t["bass"].orbit.shape = "fixed"
     return scene

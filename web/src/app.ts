@@ -6,6 +6,7 @@ import { buildRenderParams, effectiveTrackGains } from "./audio/params";
 import { toOrbitParams, type OrbitParams } from "./orbit/orbit";
 import { Dome } from "./scene/dome";
 import { Handles } from "./scene/handles";
+import { layerOf } from "./scene/layers";
 import { loadHead } from "./scene/head";
 import { visualRadius } from "./scene/mapping";
 import { OrbitView } from "./scene/orbits";
@@ -114,7 +115,7 @@ export class App {
       this.engine.onEnded = () => this.transport.update(this.engine.time, this.engine.duration, false);
       const ranges = SchemaRanges.from(schema);
       const actions = this.panelActions();
-      this.tracksPanel = new TracksPanel(actions, ranges, presets);
+      this.tracksPanel = new TracksPanel(actions, presets);
       this.orbitPanel = new OrbitPanel(actions, ranges);
       root.append(this.tracksPanel.el, this.orbitPanel.el);
       for (const track of TRACKS) {
@@ -295,7 +296,9 @@ export class App {
         selected: track === this.selected,
       });
     }
-    this.dome.setRadius(visualRadius(scene.tracks[this.selected].orbit.radius_m));
+    const selectedOrbit = scene.tracks[this.selected].orbit;
+    this.dome.setRadius(visualRadius(selectedOrbit.radius_m));
+    this.dome.setActiveLayer(layerOf(selectedOrbit.height_deg));
     this.tracksPanel.sync(scene, this.selected);
     this.orbitPanel.sync(scene, this.selected, analysis);
     this.paramsDirty = true;

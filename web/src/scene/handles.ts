@@ -1,5 +1,5 @@
-// 拖拽交互：点击轨道或小球选中音轨；选中音轨显示 3 个把手（半径 / 前后倾斜 / 左右倾斜）；
-// 暂停时可直接拖小球改起点。拖动期间暂停相机控制。
+// 3D 拖拽：点击轨道或小球选中音轨；选中音轨的轨道左侧有一个白色圆点，拖它改距离；
+// 暂停时可直接拖小球改起点。倾斜由面板里的倾斜盘负责，这里不再放倾斜把手，保持画面简洁。
 
 import * as THREE from "three";
 import { positionAtPhase, type OrbitParams, type Position } from "../orbit/orbit";
@@ -8,13 +8,13 @@ import { localToWorld, orbitLocalAngle, phaseDraggable, phaseForLocalAngle, radi
 import { worldPoint, type OrbitView } from "./orbits";
 import type { Stage } from "./stage";
 
-type DragKind = "radius" | "pitch" | "roll" | "phase";
+type DragKind = "radius" | "phase";
 
-const DEG_PER_PIXEL = 0.35;
-const TILT_LIMIT = 90;
-const KNOB_RADIUS = 0.017;
-const KNOB_COLOR = { radius: 0xffffff, tilt: 0xb9c3ff };
+const KNOB_RADIUS = 0.012;
+const KNOB_COLOR = 0xffffff;
+const RADIUS_KNOB_PHASE = 270; // 轨道左侧
 const FIXED_KNOB_PUSH = 1.18;
+const RADIUS_STEP = 0.01;
 
 export interface HandleDeps {
   views: Map<TrackName, OrbitView>;
@@ -31,17 +31,13 @@ export interface HandleDeps {
 interface DragState {
   kind: DragKind;
   track: TrackName;
-  startY: number;
-  startValue: number;
   sourceIndex: number;
 }
 
 const wrap180 = (d: number) => ((((d + 180) % 360) + 360) % 360) - 180;
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 export class Handles {
-  private readonly knobs = new THREE.Group();
-  private readonly knob: Record<"radius" | "pitch" | "roll", THREE.Mesh>;
+  private readonly knob: THREE.Mesh;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private readonly plane = new THREE.Plane();
@@ -50,40 +46,26 @@ export class Handles {
   private drag: DragState | null = null;
 
   constructor(private readonly stage: Stage, private readonly deps: HandleDeps) {
-    const sphere = new THREE.SphereGeometry(KNOB_RADIUS, 20, 14);
-    const torus = new THREE.TorusGeometry(KNOB_RADIUS, KNOB_RADIUS * 0.35, 10, 24);
-    const make = (geo: THREE.BufferGeometry, color: number, kind: DragKind) => {
-      const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6 }));
-      m.userData = { kind };
-      this.knobs.add(m);
-      return m;
-    };
-    this.knob = {
-      radius: make(sphere, KNOB_COLOR.radius, "radius"),
-      pitch: make(torus, KNOB_COLOR.tilt, "pitch"),
-      roll: make(torus, KNOB_COLOR.tilt, "roll"),
-    };
-    stage.scene.add(this.knobs);
+    this.knob = new THREE.Mesh(
+      new THREE.SphereGeometry(KNOB_RADIUS, 20, 14),
+      new THREE.MeshStandardMaterial({ color: KNOB_COLOR, emissive: KNOB_COLOR, emissiveIntensity: 0.5 }),
+    );
+    this.knob.userData = { kind: "radius" };
+    stage.scene.add(this.knob);
     const el = stage.renderer.domElement;
     el.addEventListener("pointerdown", this.onDown);
     el.addEventListener("pointermove", this.onMove);
     window.addEventListener("pointerup", this.onUp);
   }
 
-  /** 每帧把把手放到选中音轨的轨道上（左侧 = 半径，正前 = 前后倾斜，右侧 = 左右倾斜）。 */
+  /** 每帧把距离圆点放到选中音轨的轨道左侧（固定声源则放在声源外侧）。 */
   update(): void {
     const p = this.deps.params(this.deps.selected());
-    const fixed = p.shape === "fixed";
-    this.knob.pitch.visible = !fixed;
-    this.knob.roll.visible = !fixed;
-    if (fixed) {
-      worldPoint(positionAtPhase(p, p.startDeg, this.pos), this.knob.radius.position).multiplyScalar(FIXED_KNOB_PUSH);
-      return;
+    if (p.shape === "fixed") {
+      worldPoint(positionAtPhase(p, p.startDeg, this.pos), this.knob.position).multiplyScalar(FIXED_KNOB_PUSH);
+    } else {
+      worldPoint(positionAtPhase(p, RADIUS_KNOB_PHASE, this.pos), this.knob.position);
     }
-    worldPoint(positionAtPhase(p, 270, this.pos), this.knob.radius.position);
-    worldPoint(positionAtPhase(p, 0, this.pos), this.knob.pitch.position);
-    worldPoint(positionAtPhase(p, 90, this.pos), this.knob.roll.position);
-    for (const k of [this.knob.pitch, this.knob.roll]) k.lookAt(this.stage.camera.position);
   }
 
   private setPointer(e: PointerEvent): void {
@@ -93,7 +75,7 @@ export class Handles {
   }
 
   private pick(): THREE.Intersection | null {
-    const targets: THREE.Object3D[] = [...this.knobs.children.filter((k) => k.visible)];
+    const targets: THREE.Object3D[] = [this.knob];
     for (const view of this.deps.views.values()) targets.push(...view.group.children);
     return this.raycaster.intersectObjects(targets, false)[0] ?? null;
   }
@@ -108,23 +90,17 @@ export class Handles {
     this.setPointer(e);
     const hit = this.pick();
     if (!hit) return;
-    const data = hit.object.userData as { kind?: DragKind | "path" | "source"; track?: TrackName; index?: number };
+    const data = hit.object.userData as { kind?: string; track?: TrackName; index?: number };
     const selected = this.deps.selected();
     if (data.track && data.track !== selected) {
       this.deps.select(data.track);
       return;
     }
-    const orbit = this.deps.orbit(selected);
     let kind: DragKind | null = null;
-    let startValue = 0;
-    if (data.kind === "radius") [kind, startValue] = ["radius", orbit.radius_m];
-    else if (data.kind === "pitch") [kind, startValue] = ["pitch", orbit.pitch_deg];
-    else if (data.kind === "roll") [kind, startValue] = ["roll", orbit.roll_deg];
-    else if (data.kind === "source" && !this.deps.playing() && phaseDraggable(this.deps.params(selected))) {
-      [kind, startValue] = ["phase", orbit.start_deg];
-    }
+    if (data.kind === "radius") kind = "radius";
+    else if (data.kind === "source" && !this.deps.playing() && phaseDraggable(this.deps.params(selected))) kind = "phase";
     if (!kind) return;
-    this.drag = { kind, track: selected, startY: e.clientY, startValue, sourceIndex: data.index ?? 0 };
+    this.drag = { kind, track: selected, sourceIndex: data.index ?? 0 };
     this.stage.controls.enabled = false;
     (e.target as Element).setPointerCapture?.(e.pointerId);
   };
@@ -132,25 +108,19 @@ export class Handles {
   private onMove = (e: PointerEvent): void => {
     this.setPointer(e);
     if (!this.drag) {
-      const hit = this.pick();
-      const kind = (hit?.object.userData as { kind?: string } | undefined)?.kind;
-      this.stage.renderer.domElement.style.cursor = kind && kind !== "path" ? "grab" : hit ? "pointer" : "";
+      const kind = (this.pick()?.object.userData as { kind?: string } | undefined)?.kind;
+      this.stage.renderer.domElement.style.cursor = kind === "radius" || kind === "source" ? "grab" : kind ? "pointer" : "";
       return;
     }
-    const { kind, track, startY, startValue } = this.drag;
-    if (kind === "pitch" || kind === "roll") {
-      const value = clamp(startValue - (e.clientY - startY) * DEG_PER_PIXEL, -TILT_LIMIT, TILT_LIMIT);
-      this.deps.change(track, kind === "pitch" ? { pitch_deg: value } : { roll_deg: value });
-      return;
-    }
+    const { kind, track } = this.drag;
     if (!this.raycaster.ray.intersectPlane(this.orbitPlane(track), this.hit)) return;
     if (kind === "radius") {
-      this.deps.change(track, { radius_m: Math.round(radiusFromVisual(this.hit.length()) * 100) / 100 });
+      const r = radiusFromVisual(this.hit.length());
+      this.deps.change(track, { radius_m: Math.round(r / RADIUS_STEP) * RADIUS_STEP });
       return;
     }
     const p = this.deps.params(track);
-    const view = this.deps.views.get(track);
-    const offset = view?.offsets()[this.drag.sourceIndex] ?? 0;
+    const offset = this.deps.views.get(track)?.offsets()[this.drag.sourceIndex] ?? 0;
     const target = phaseForLocalAngle(p, orbitLocalAngle(p, this.hit.x, this.hit.y, this.hit.z));
     const advance = p.shape === "fixed" ? 0 : (p.direction * 360 * (this.deps.songTime() - this.deps.tRef())) / p.periodS;
     this.deps.change(track, { start_deg: Math.round(wrap180(target - offset - advance)) });

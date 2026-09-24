@@ -14,7 +14,7 @@ const CAMERA_START = new THREE.Vector3(-1.55, 0.72, 2.05);
 const CAMERA_TARGET = new THREE.Vector3(0, 0.02, 0);
 const BLOOM = { strength: 0.85, radius: 0.5, threshold: 1.4 }; // 只让发光小球（亮度 > 1.4）泛光，白模不泛光
 const ENVIRONMENT_INTENSITY = 0.45;
-const DISTANCE_RINGS_M = [0.5, 1, 2, 4];
+const DISTANCE_RINGS_M = [1, 2]; // 只留两圈参考距离，减少杂线
 const FLOOR_Y = -0.3; // 人头模型带肩膀，肩膀底部约在耳朵下方 0.27 处
 const MAX_PIXEL_RATIO = 2;
 
@@ -80,7 +80,7 @@ export class Stage {
     for (const d of DISTANCE_RINGS_M) {
       const r = ringRadius(d);
       const geo = new THREE.RingGeometry(r - 0.0015, r + 0.0015, 128);
-      const mat = new THREE.MeshBasicMaterial({ color: 0x3a4152, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
+      const mat = new THREE.MeshBasicMaterial({ color: 0x3a4152, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
       const ring = new THREE.Mesh(geo, mat);
       ring.rotation.x = -Math.PI / 2;
       group.add(ring);

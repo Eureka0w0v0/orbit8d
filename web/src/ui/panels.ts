@@ -1,7 +1,9 @@
-// 左侧音轨面板与右侧轨道参数面板。面板只负责显示与收集操作，场景数据的修改统一交给 App。
+// 左侧音轨面板与右侧参数面板（分【轨道】【混音】【空间】三页）。
+// 面板只负责显示与收集操作，场景数据的修改统一交给 App。
 
 import { effectiveTrackGains } from "../audio/params";
 import { BEATS_PER_BAR } from "../orbit/orbit";
+import { DIRECTIONS, matchDirection, orientationFromTilt, tiltFromOrientation } from "../orbit/orientation";
 import { LAYERS, layerOf } from "../scene/layers";
 import { TRACK_COLORS } from "../scene/orbits";
 import type { Analysis, Bars, Orbit, Room, RoomName, Scene, Shape, Speed, Track, TrackName } from "../types";
@@ -9,11 +11,18 @@ import { TRACKS } from "../types";
 import { Slider, fmt, h, segmented, setSegmented } from "./dom";
 import { PARAM_LABEL, PRESET_LABEL, ROOM_LABEL, SHAPE_LABEL, TEXT, TRACK_LABEL } from "./labels";
 import type { SchemaRanges } from "./schema";
+import { TiltPad } from "./tiltpad";
 
 const STEREO_TRACKS: ReadonlySet<TrackName> = new Set(["drums", "other"]);
 const SHAPES: Shape[] = ["circle", "ellipse", "pendulum", "figure8", "spiral", "fixed"];
 const BAR_CHOICES: Bars[] = [1, 2, 4, 8];
 const ROOMS: RoomName[] = ["room", "hall", "church"];
+type Tab = "orbit" | "mix" | "space";
+const TABS: ReadonlyArray<{ value: Tab; label: string }> = [
+  { value: "orbit", label: TEXT.tabOrbit },
+  { value: "mix", label: TEXT.tabMix },
+  { value: "space", label: TEXT.tabSpace },
+];
 
 const cssColor = (hex: number) => `#${hex.toString(16).padStart(6, "0")}`;
 
@@ -34,23 +43,18 @@ interface TrackRow {
   row: HTMLDivElement;
   mute: HTMLButtonElement;
   solo: HTMLButtonElement;
-  gain: Slider;
 }
 
+/** 左栏：只有音轨名、静音、独奏，下面是预设。 */
 export class TracksPanel {
   readonly el: HTMLElement;
   private readonly rows = new Map<TrackName, TrackRow>();
 
-  constructor(actions: PanelActions, ranges: SchemaRanges, presets: readonly string[]) {
-    const gainRange = ranges.of("Track", "gain_db");
+  constructor(actions: PanelActions, presets: readonly string[]) {
     const list = h("div", { class: "track-list" });
     for (const name of TRACKS) {
       const mute = h("button", { type: "button", class: "chip", title: TEXT.mute }, "M");
       const solo = h("button", { type: "button", class: "chip", title: TEXT.solo }, "S");
-      const gain = new Slider({
-        label: PARAM_LABEL.gain_db, ...gainRange, step: 0.5, value: 0, format: fmt.db,
-        onInput: (v) => actions.setTrack(name, { gain_db: v }),
-      });
       mute.addEventListener("click", (e) => {
         e.stopPropagation();
         actions.setTrack(name, { mute: !mute.classList.contains("on") });
@@ -62,11 +66,13 @@ export class TracksPanel {
       const row = h(
         "div",
         { class: "track-row", style: `--track:${cssColor(TRACK_COLORS[name])}` },
-        h("div", { class: "track-head" }, h("span", { class: "dot" }), h("span", { class: "track-name" }, TRACK_LABEL[name]), mute, solo),
-        gain.el,
+        h("span", { class: "dot" }),
+        h("span", { class: "track-name" }, TRACK_LABEL[name]),
+        mute,
+        solo,
       );
       row.addEventListener("click", () => actions.select(name));
-      this.rows.set(name, { row, mute, solo, gain });
+      this.rows.set(name, { row, mute, solo });
       list.append(row);
     }
     const presetBox = h("div", { class: "presets" });
@@ -85,17 +91,22 @@ export class TracksPanel {
       r.row.classList.toggle("silent", gains[name] === 0);
       r.mute.classList.toggle("on", t.mute);
       r.solo.classList.toggle("on", t.solo);
-      r.gain.set(t.gain_db);
     }
   }
 }
 
+/** 右栏：选中音轨的参数，分三页。结构变化时重建，数值变化时只同步显示（不打断拖动）。 */
 export class OrbitPanel {
   readonly el: HTMLElement;
   private readonly body: HTMLDivElement;
+  private tab: Tab = "orbit";
+  private fineOpen = false;
   private builtKey = "";
   private sliders: Array<{ slider: Slider; read: (s: Scene) => number }> = [];
   private layerBox: HTMLDivElement | null = null;
+  private directionBox: HTMLDivElement | null = null;
+  private pad: TiltPad | null = null;
+  private last: { scene: Scene; track: TrackName; analysis: Analysis } | null = null;
 
   constructor(private readonly actions: PanelActions, private readonly ranges: SchemaRanges) {
     this.body = h("div", { class: "orbit-body" });
@@ -103,15 +114,22 @@ export class OrbitPanel {
   }
 
   sync(scene: Scene, selected: TrackName, analysis: Analysis): void {
+    this.last = { scene, track: selected, analysis };
     const o = scene.tracks[selected].orbit;
-    const key = `${selected}|${o.shape}|${o.speed.mode}|${o.speed.bars}|${o.direction}|${scene.room.name}`;
+    const key = [this.tab, selected, o.shape, o.speed.mode, o.speed.bars, o.direction, scene.room.name].join("|");
     if (key !== this.builtKey) {
       this.builtKey = key;
       this.build(scene, selected, analysis);
-      return;
     }
     for (const { slider, read } of this.sliders) slider.set(read(scene));
     if (this.layerBox) setSegmented(this.layerBox, layerOf(o.height_deg));
+    if (this.directionBox) setSegmented(this.directionBox, matchDirection(o));
+    this.pad?.set(tiltFromOrientation(o));
+  }
+
+  private switchTab(tab: Tab): void {
+    this.tab = tab;
+    if (this.last) this.sync(this.last.scene, this.last.track, this.last.analysis);
   }
 
   private slider(
@@ -129,61 +147,75 @@ export class OrbitPanel {
     return slider.el;
   }
 
-  private domeToggle(): HTMLLabelElement {
-    const box = h("input", { type: "checkbox", checked: this.actions.domeVisible() });
-    box.addEventListener("change", () => this.actions.toggleDome(box.checked));
-    return h("label", { class: "toggle" }, box, h("span", {}, TEXT.showDome));
-  }
-
   private build(scene: Scene, track: TrackName, analysis: Analysis): void {
     this.sliders = [];
+    this.layerBox = null;
+    this.directionBox = null;
+    this.pad = null;
+    const head = h(
+      "div",
+      { class: "panel-head", style: `--track:${cssColor(TRACK_COLORS[track])}` },
+      h("span", { class: "dot" }),
+      h("span", { class: "panel-title" }, TRACK_LABEL[track]),
+    );
+    const tabs = segmented(TABS, this.tab, (t) => this.switchTab(t), "tabs");
+    const content =
+      this.tab === "orbit" ? this.orbitTab(scene, track, analysis) : this.tab === "mix" ? this.mixTab(scene, track) : this.spaceTab(scene);
+    this.body.replaceChildren(head, tabs, ...content);
+  }
+
+  private orbitTab(scene: Scene, track: TrackName, analysis: Analysis): HTMLElement[] {
     const a = this.actions;
     const o = scene.tracks[track].orbit;
     const orbit = (s: Scene) => s.tracks[track].orbit;
     const setO = (patch: Partial<Orbit>) => a.setOrbit(track, patch);
     const barSeconds = (bars: number) => (bars * BEATS_PER_BAR * 60) / analysis.bpm_norm;
     const moving = o.shape !== "fixed";
-
-    const title = h(
-      "h2",
-      { style: `--track:${cssColor(TRACK_COLORS[track])}` },
-      h("span", { class: "dot" }),
-      `${TRACK_LABEL[track]} · ${TEXT.orbit}`,
-    );
-    const shape = segmented(SHAPES.map((s) => ({ value: s, label: SHAPE_LABEL[s] })), o.shape, (s) => setO({ shape: s }), "grid3");
+    const out: HTMLElement[] = [
+      h("div", { class: "field-label" }, TEXT.shape),
+      segmented(SHAPES.map((s) => ({ value: s, label: SHAPE_LABEL[s] })), o.shape, (s) => setO({ shape: s }), "grid3"),
+    ];
 
     this.layerBox = segmented(
-      LAYERS.map((l) => ({ value: l.name, label: l.label })),
+      [...LAYERS].reverse().map((l) => ({ value: l.name, label: l.label })),
       layerOf(o.height_deg) ?? "",
       (name) => setO({ height_deg: LAYERS.find((l) => l.name === name)!.center }),
+      "stack",
     );
-    const geometry: HTMLElement[] = [
-      h("div", { class: "field-label" }, TEXT.layer),
-      this.layerBox,
-      this.slider(PARAM_LABEL.radius_m, "Orbit", "radius_m", 0.05, fmt.meters, (s) => orbit(s).radius_m, scene, (v) => setO({ radius_m: v })),
-      this.slider(PARAM_LABEL.start_deg, "Orbit", "start_deg", 1, fmt.deg, (s) => orbit(s).start_deg, scene, (v) => setO({ start_deg: v })),
-      this.slider(PARAM_LABEL.height_deg, "Orbit", "height_deg", 1, fmt.deg, (s) => orbit(s).height_deg, scene, (v) => setO({ height_deg: v })),
-    ];
     if (moving) {
-      geometry.push(
-        this.slider(PARAM_LABEL.pitch_deg, "Orbit", "pitch_deg", 1, fmt.deg, (s) => orbit(s).pitch_deg, scene, (v) => setO({ pitch_deg: v })),
-        this.slider(PARAM_LABEL.roll_deg, "Orbit", "roll_deg", 1, fmt.deg, (s) => orbit(s).roll_deg, scene, (v) => setO({ roll_deg: v })),
-        this.slider(PARAM_LABEL.yaw_deg, "Orbit", "yaw_deg", 1, fmt.deg, (s) => orbit(s).yaw_deg, scene, (v) => setO({ yaw_deg: v })),
+      this.directionBox = segmented(
+        DIRECTIONS.map((d) => ({ value: d.key, label: d.label })),
+        matchDirection(o) ?? "",
+        (key) => setO(orientationFromTilt(DIRECTIONS.find((d) => d.key === key)!.tilt)),
+        "grid3",
       );
-    }
-    if (o.shape === "ellipse") {
-      geometry.push(this.slider(PARAM_LABEL.aspect, "Orbit", "aspect", 0.01, fmt.ratio, (s) => orbit(s).aspect, scene, (v) => setO({ aspect: v })));
-    }
-    if (o.shape === "pendulum" || o.shape === "figure8") {
-      geometry.push(this.slider(PARAM_LABEL.swing_deg, "Orbit", "swing_deg", 1, fmt.deg, (s) => orbit(s).swing_deg, scene, (v) => setO({ swing_deg: v })));
-    }
-    if (o.shape === "figure8" || o.shape === "spiral") {
-      geometry.push(this.slider(PARAM_LABEL.lift_deg, "Orbit", "lift_deg", 1, fmt.deg, (s) => orbit(s).lift_deg, scene, (v) => setO({ lift_deg: v })));
+      this.pad = new TiltPad((t) => setO(orientationFromTilt(t)));
+      this.pad.set(tiltFromOrientation(o));
+      out.push(
+        h("div", { class: "field-label" }, TEXT.orientation),
+        this.directionBox,
+        h("div", { class: "pad-row" }, this.pad.el, h("div", { class: "pad-side" }, h("div", { class: "field-label" }, TEXT.layer), this.layerBox)),
+        h("p", { class: "hint" }, TEXT.padHint),
+      );
+    } else {
+      out.push(h("div", { class: "field-label" }, TEXT.layer), this.layerBox);
     }
 
-    const motion: HTMLElement[] = [];
+    out.push(this.slider(PARAM_LABEL.radius_m, "Orbit", "radius_m", 0.05, fmt.meters, (s) => orbit(s).radius_m, scene, (v) => setO({ radius_m: v })));
+    if (!moving) {
+      out.push(this.slider(PARAM_LABEL.start_deg, "Orbit", "start_deg", 1, fmt.deg, (s) => orbit(s).start_deg, scene, (v) => setO({ start_deg: v })));
+    }
+    if (o.shape === "ellipse") {
+      out.push(this.slider(PARAM_LABEL.aspect, "Orbit", "aspect", 0.01, fmt.ratio, (s) => orbit(s).aspect, scene, (v) => setO({ aspect: v })));
+    }
+    if (o.shape === "pendulum" || o.shape === "figure8") {
+      out.push(this.slider(PARAM_LABEL.swing_deg, "Orbit", "swing_deg", 1, fmt.deg, (s) => orbit(s).swing_deg, scene, (v) => setO({ swing_deg: v })));
+    }
+    if (o.shape === "figure8" || o.shape === "spiral") {
+      out.push(this.slider(PARAM_LABEL.lift_deg, "Orbit", "lift_deg", 1, fmt.deg, (s) => orbit(s).lift_deg, scene, (v) => setO({ lift_deg: v })));
+    }
     if (moving) {
-      motion.push(
+      out.push(
         h("div", { class: "field-label" }, PARAM_LABEL.speed),
         segmented(
           [{ value: "bars", label: TEXT.bars }, { value: "seconds", label: TEXT.seconds }] as const,
@@ -201,31 +233,45 @@ export class OrbitPanel {
         h("div", { class: "field-label" }, PARAM_LABEL.direction),
         segmented([{ value: "cw", label: TEXT.cw }, { value: "ccw", label: TEXT.ccw }] as const, o.direction, (d) => setO({ direction: d })),
       );
+      const fine = h(
+        "details",
+        { class: "fine", open: this.fineOpen },
+        h("summary", {}, TEXT.fineTune),
+        this.slider(PARAM_LABEL.start_deg, "Orbit", "start_deg", 1, fmt.deg, (s) => orbit(s).start_deg, scene, (v) => setO({ start_deg: v })),
+        this.slider(PARAM_LABEL.height_deg, "Orbit", "height_deg", 1, fmt.deg, (s) => orbit(s).height_deg, scene, (v) => setO({ height_deg: v })),
+        this.slider(PARAM_LABEL.pitch_deg, "Orbit", "pitch_deg", 1, fmt.deg, (s) => orbit(s).pitch_deg, scene, (v) => setO({ pitch_deg: v })),
+        this.slider(PARAM_LABEL.roll_deg, "Orbit", "roll_deg", 1, fmt.deg, (s) => orbit(s).roll_deg, scene, (v) => setO({ roll_deg: v })),
+        this.slider(PARAM_LABEL.yaw_deg, "Orbit", "yaw_deg", 1, fmt.deg, (s) => orbit(s).yaw_deg, scene, (v) => setO({ yaw_deg: v })),
+      );
+      fine.addEventListener("toggle", () => (this.fineOpen = fine.open));
+      out.push(fine);
+    } else {
+      out.push(this.slider(PARAM_LABEL.height_deg, "Orbit", "height_deg", 1, fmt.deg, (s) => orbit(s).height_deg, scene, (v) => setO({ height_deg: v })));
     }
+    return out;
+  }
 
-    const mix: HTMLElement[] = [];
+  private mixTab(scene: Scene, track: TrackName): HTMLElement[] {
+    const a = this.actions;
+    const out = [this.slider(PARAM_LABEL.gain_db, "Track", "gain_db", 0.5, fmt.db, (s) => s.tracks[track].gain_db, scene, (v) => a.setTrack(track, { gain_db: v }))];
     if (STEREO_TRACKS.has(track)) {
-      mix.push(this.slider(PARAM_LABEL.width_deg, "Track", "width_deg", 1, fmt.deg, (s) => s.tracks[track].width_deg, scene, (v) => a.setTrack(track, { width_deg: v })));
+      out.push(this.slider(PARAM_LABEL.width_deg, "Track", "width_deg", 1, fmt.deg, (s) => s.tracks[track].width_deg, scene, (v) => a.setTrack(track, { width_deg: v })));
     }
-    mix.push(this.slider(PARAM_LABEL.reverb_send, "Track", "reverb_send", 0.01, fmt.percent, (s) => s.tracks[track].reverb_send, scene, (v) => a.setTrack(track, { reverb_send: v })));
+    out.push(this.slider(PARAM_LABEL.reverb_send, "Track", "reverb_send", 0.01, fmt.percent, (s) => s.tracks[track].reverb_send, scene, (v) => a.setTrack(track, { reverb_send: v })));
+    return out;
+  }
 
-    const space = [
+  private spaceTab(scene: Scene): HTMLElement[] {
+    const a = this.actions;
+    const toggle = h("input", { type: "checkbox", checked: a.domeVisible() });
+    toggle.addEventListener("change", () => a.toggleDome(toggle.checked));
+    return [
       h("div", { class: "field-label" }, TEXT.room),
       segmented(ROOMS.map((r) => ({ value: r, label: ROOM_LABEL[r] })), scene.room.name, (r) => a.setRoom({ name: r })),
       this.slider(PARAM_LABEL.wet_db, "Room", "wet_db", 0.5, fmt.db, (s) => s.room.wet_db, scene, (v) => a.setRoom({ wet_db: v })),
       this.slider(PARAM_LABEL.rear_darken_db, null, "rear_darken_db", 0.5, fmt.db, (s) => s.rear_darken_db, scene, (v) => a.setRearDarken(v)),
-      this.domeToggle(),
-    ];
-
-    const sections: HTMLElement[] = [title, shape, h("div", { class: "group" }, ...geometry)];
-    if (moving) sections.push(h("div", { class: "group" }, ...motion));
-    this.body.replaceChildren(
-      ...sections,
-      h("div", { class: "group" }, ...mix),
-      h("h2", {}, TEXT.global),
-      h("div", { class: "group" }, ...space),
-      h("p", { class: "hint" }, TEXT.dragHint),
+      h("label", { class: "toggle" }, toggle, h("span", {}, TEXT.showDome)),
       h("button", { type: "button", class: "ghost", onclick: () => a.resetView() }, TEXT.resetView),
-    );
+    ];
   }
 }

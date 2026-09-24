@@ -145,3 +145,25 @@ def test_single_point_preset_imitates_reference_video():
     for track in scene.tracks.values():
         assert track.orbit.shape == "circle" and track.width_deg == 0.0
         assert track.orbit.speed.mode == "seconds" and track.orbit.speed.seconds == 12.0
+
+
+def test_layers_preset_stacks_tracks_on_three_layers():
+    t = preset("layers", default_bars=4).tracks
+    assert t["vocals"].orbit.height_deg == 75.0
+    assert t["other"].orbit.height_deg == 35.0 and t["other"].orbit.direction == "ccw"
+    assert t["drums"].orbit.height_deg == 0.0 and t["bass"].orbit.shape == "fixed"
+
+
+def test_diagonal_preset_tilts_vocals_and_other_opposite_ways():
+    t = preset("diagonal", default_bars=4).tracks
+    v, o = t["vocals"].orbit, t["other"].orbit
+    assert (v.pitch_deg, v.yaw_deg) == (45.0, 45.0) and (o.pitch_deg, o.yaw_deg) == (45.0, -45.0)
+    assert o.direction == "ccw"
+
+
+def test_cross_preset_uses_three_perpendicular_rings():
+    t = preset("cross", default_bars=4).tracks
+    v, o, d = t["vocals"].orbit, t["other"].orbit, t["drums"].orbit
+    assert (v.pitch_deg, v.roll_deg, v.yaw_deg) == (90.0, 0.0, 0.0)  # 左耳 → 头顶 → 右耳
+    assert (o.pitch_deg, o.yaw_deg) == (90.0, 90.0)  # 正前 → 头顶 → 脑后
+    assert (d.pitch_deg, d.roll_deg) == (0.0, 0.0)  # 水平

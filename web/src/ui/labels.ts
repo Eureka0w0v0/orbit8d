@@ -21,6 +21,9 @@ export const PRESET_LABEL: Record<string, string> = {
   dual: "双环反向",
   tumble: "上下翻滚",
   single: "单点环绕（视频同款）",
+  layers: "三层环绕",
+  diagonal: "斜向环绕",
+  cross: "立体交叉",
 };
 
 export const PROJECT_STATE_LABEL: Record<ProjectState, string> = {
@@ -51,7 +54,7 @@ export const FORMAT_LABEL: Record<ExportFormat, string> = {
 export const PARAM_LABEL = {
   radius_m: "距离",
   speed: "速度",
-  direction: "方向",
+  direction: "转动方向",
   start_deg: "起点",
   height_deg: "高度",
   pitch_deg: "前后倾斜",
@@ -92,7 +95,13 @@ export const TEXT = {
   seconds: "按秒",
   mute: "静音",
   solo: "独奏",
-  dragHint: "拖动左侧白点改距离，拖正前 / 右侧圆环改倾斜；暂停时可以拖小球改起点",
+  tabOrbit: "轨道",
+  tabMix: "混音",
+  tabSpace: "空间",
+  shape: "形状",
+  orientation: "朝向",
+  fineTune: "精细调节",
+  padHint: "往哪边拖就往哪边翘，越靠边越竖直，双击回水平",
   resetView: "重置视角",
   layer: "所在层",
   showDome: "显示三层半球网格",
