@@ -18,7 +18,7 @@ const TUBE_RADIUS = 0.0028;
 const TUBE_RADIUS_SELECTED = 0.0045;
 const SPHERE_RADIUS = 0.026;
 const PAIR_SPHERE_RADIUS = 0.019;
-const EMISSIVE = { idle: 2.2, muted: 0.25 };
+const EMISSIVE = { idle: 4.0, muted: 0.3 };
 const PATH_OPACITY = { idle: 0.35, selected: 0.95, muted: 0.12 };
 
 export interface OrbitViewState {

@@ -11,7 +11,7 @@ const MODEL_EAR_SPAN = 3.62;
 const TARGET_EAR_SPAN = 0.18; // 世界单位 ≈ 米
 export const EAR_HALF_SPAN = TARGET_EAR_SPAN / 2;
 
-const CLAY = { color: 0xf1eee8, roughness: 0.62, metalness: 0.0 };
+const CLAY = { color: 0xd8d4cc, roughness: 0.66, metalness: 0.0 };
 
 export async function loadHead(url = HEAD_MODEL_URL): Promise<THREE.Group> {
   const gltf = await new GLTFLoader().loadAsync(url);
@@ -42,7 +42,7 @@ function earMarkers(): THREE.Group {
     [-EAR_HALF_SPAN - 0.006, 0x7cf0c4],
     [EAR_HALF_SPAN + 0.006, 0x7cb8f0],
   ] as const) {
-    const dot = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.6 }));
+    const dot = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 3 }));
     dot.position.set(x, 0, 0);
     group.add(dot);
   }

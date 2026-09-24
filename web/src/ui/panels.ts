@@ -139,7 +139,7 @@ export class OrbitPanel {
       h("span", { class: "dot" }),
       `${TRACK_LABEL[track]} · ${TEXT.orbit}`,
     );
-    const shape = segmented(SHAPES.map((s) => ({ value: s, label: SHAPE_LABEL[s] })), o.shape, (s) => setO({ shape: s }), "wrap");
+    const shape = segmented(SHAPES.map((s) => ({ value: s, label: SHAPE_LABEL[s] })), o.shape, (s) => setO({ shape: s }), "grid3");
 
     const geometry: HTMLElement[] = [
       this.slider(PARAM_LABEL.radius_m, "Orbit", "radius_m", 0.05, fmt.meters, (s) => orbit(s).radius_m, scene, (v) => setO({ radius_m: v })),
@@ -177,7 +177,7 @@ export class OrbitPanel {
               BAR_CHOICES.map((b) => ({ value: b, label: `${b} 小节 · ${barSeconds(b).toFixed(1)}s` })),
               o.speed.bars,
               (b) => a.setSpeed(track, { bars: b }),
-              "wrap",
+              "grid2",
             )
           : this.slider(PARAM_LABEL.speed, "Speed", "seconds", 0.5, fmt.seconds, (s) => orbit(s).speed.seconds, scene, (v) => a.setSpeed(track, { seconds: v })),
         h("div", { class: "field-label" }, PARAM_LABEL.direction),

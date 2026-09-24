@@ -10,6 +10,8 @@ const PROCESSOR_NAME = "orbit8d-binaural";
 const START_LATENCY_S = 0.06;
 const PARAM_RAMP_S = 0.05;
 const LIMITER = { threshold: -1, knee: 0, ratio: 20, attack: 0.001, release: 0.1 };
+const METER_FFT = 2048;
+const METER_FLOOR_DB = -90;
 
 /** 试听文件名（后端 PREVIEW_NAMES）→ 在 9 声道缓冲中的起始声道。 */
 const STEM_LAYOUT: ReadonlyArray<{ name: string; channel: number; channels: 1 | 2 }> = [
@@ -31,6 +33,8 @@ export class AudioEngine {
   private readonly wetGain: GainNode;
   private readonly eq: ConvolverNode;
   private readonly master: GainNode;
+  private readonly meters: [AnalyserNode, AnalyserNode];
+  private readonly meterBuf = new Float32Array(METER_FFT);
   private buffer: AudioBuffer | null = null;
   private source: AudioBufferSourceNode | null = null;
   private songOffset = 0;
@@ -54,6 +58,13 @@ export class AudioEngine {
     limiter.release.value = LIMITER.release;
     this.wet.connect(this.wetGain).connect(this.eq);
     this.eq.connect(this.master).connect(limiter).connect(this.ctx.destination);
+    const split = this.ctx.createChannelSplitter(2);
+    this.meters = [this.ctx.createAnalyser(), this.ctx.createAnalyser()];
+    limiter.connect(split);
+    this.meters.forEach((m, ch) => {
+      m.fftSize = METER_FFT;
+      split.connect(m, ch);
+    });
   }
 
   async init(hrtf: ArrayBuffer, eqWav: ArrayBuffer): Promise<void> {
@@ -106,6 +117,17 @@ export class AudioEngine {
     const now = this.ctx.currentTime;
     this.wetGain.gain.setTargetAtTime(10 ** (wetDb / 20), now, PARAM_RAMP_S);
     this.master.gain.setTargetAtTime(previewGain, now, PARAM_RAMP_S);
+  }
+
+  /** 最终输出左右声道的 RMS 电平（dB），用于电平表。 */
+  levels(): [number, number] {
+    return this.meters.map((m) => {
+      m.getFloatTimeDomainData(this.meterBuf);
+      let sum = 0;
+      for (const v of this.meterBuf) sum += v * v;
+      const rms = Math.sqrt(sum / this.meterBuf.length);
+      return rms > 0 ? Math.max(METER_FLOOR_DB, 20 * Math.log10(rms)) : METER_FLOOR_DB;
+    }) as [number, number];
   }
 
   get duration(): number {

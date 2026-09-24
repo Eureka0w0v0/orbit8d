@@ -241,8 +241,13 @@ input[type="range"] {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
 }
-.segmented.wrap {
-  flex-wrap: wrap;
+.segmented.grid3,
+.segmented.grid2 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+.segmented.grid2 {
+  grid-template-columns: repeat(2, 1fr);
 }
 .segmented button {
   flex: 1;
@@ -299,6 +304,26 @@ body:not([data-phase="ready"]) .transport {
 }
 .phones {
   display: none;
+}
+.meter {
+  display: grid;
+  grid-template-columns: auto 64px;
+  align-items: center;
+  column-gap: 4px;
+  row-gap: 3px;
+  font-size: 9px;
+  color: var(--muted);
+}
+.meter .track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.meter .lvl {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #35d6c3, #ffc24b 80%, #ff6b9a);
 }
 .credits {
   position: fixed;

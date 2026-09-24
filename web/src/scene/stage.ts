@@ -12,8 +12,10 @@ const BACKGROUND = 0x0b0d12;
 const CAMERA_FOV = 34;
 const CAMERA_START = new THREE.Vector3(-1.55, 0.72, 2.05);
 const CAMERA_TARGET = new THREE.Vector3(0, 0.02, 0);
-const BLOOM = { strength: 0.9, radius: 0.55, threshold: 0.82 };
+const BLOOM = { strength: 0.85, radius: 0.5, threshold: 1.4 }; // 只让发光小球（亮度 > 1.4）泛光，白模不泛光
+const ENVIRONMENT_INTENSITY = 0.45;
 const DISTANCE_RINGS_M = [0.5, 1, 2, 4];
+const FLOOR_Y = -0.3; // 人头模型带肩膀，肩膀底部约在耳朵下方 0.27 处
 const MAX_PIXEL_RATIO = 2;
 
 export type FrameCallback = (dt: number) => void;
@@ -26,7 +28,7 @@ export class Stage {
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
   private readonly callbacks = new Set<FrameCallback>();
-  private readonly clock = new THREE.Clock();
+  private readonly timer = new THREE.Timer();
   private readonly resizeObserver: ResizeObserver;
 
   constructor(private readonly container: HTMLElement, ringRadius: (distM: number) => number) {
@@ -39,6 +41,7 @@ export class Stage {
     this.scene.background = new THREE.Color(BACKGROUND);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = ENVIRONMENT_INTENSITY;
     pmrem.dispose();
 
     this.camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.01, 50);
@@ -50,11 +53,11 @@ export class Stage {
     this.controls.maxDistance = 6;
     this.controls.update();
 
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
+    const key = new THREE.DirectionalLight(0xffffff, 1.1);
     key.position.set(-1.5, 2.2, 2.0);
-    const rim = new THREE.DirectionalLight(0x9fb4ff, 0.8);
+    const rim = new THREE.DirectionalLight(0x9fb4ff, 0.6);
     rim.position.set(1.8, 1.2, -2.2);
-    this.scene.add(key, rim, new THREE.HemisphereLight(0xffffff, 0x20242e, 0.35));
+    this.scene.add(key, rim, new THREE.HemisphereLight(0xffffff, 0x20242e, 0.25));
     this.scene.add(this.buildFloor(ringRadius));
 
     this.composer = new EffectComposer(this.renderer);
@@ -66,13 +69,14 @@ export class Stage {
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
     this.resize();
-    this.renderer.setAnimationLoop(() => this.frame());
+    this.timer.connect(document); // 页面切到后台时不累积时间差
+    this.renderer.setAnimationLoop((time) => this.frame(time));
   }
 
   /** 地面上的同心距离圈（0.5 / 1 / 2 / 4 m），帮助判断远近。 */
   private buildFloor(ringRadius: (distM: number) => number): THREE.Group {
     const group = new THREE.Group();
-    group.position.y = -0.2;
+    group.position.y = FLOOR_Y;
     for (const d of DISTANCE_RINGS_M) {
       const r = ringRadius(d);
       const geo = new THREE.RingGeometry(r - 0.0015, r + 0.0015, 128);
@@ -112,8 +116,9 @@ export class Stage {
     this.camera.updateProjectionMatrix();
   }
 
-  private frame(): void {
-    const dt = this.clock.getDelta();
+  private frame(time: number): void {
+    this.timer.update(time);
+    const dt = this.timer.getDelta();
     for (const cb of this.callbacks) cb(dt);
     this.controls.update();
     this.composer.render();
@@ -121,6 +126,7 @@ export class Stage {
 
   dispose(): void {
     this.renderer.setAnimationLoop(null);
+    this.timer.dispose();
     this.resizeObserver.disconnect();
     this.controls.dispose();
     this.renderer.dispose();

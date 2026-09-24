@@ -310,6 +310,7 @@ export class App {
     for (const view of this.views.values()) view.setTime(t, analysis.t_ref);
     this.handles.update();
     this.transport.update(t, this.engine.duration, this.engine.playing);
+    this.transport.setLevels(this.engine.levels());
   }
 
   private async togglePlay(): Promise<void> {
