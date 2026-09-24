@@ -187,7 +187,9 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | GET | /api/scene/schema | 场景参数表（前端滑杆范围的唯一来源） |
 | POST | /api/projects | 请求体为文件原始字节（`Content-Type: application/octet-stream`），原文件名放在 `X-Filename` 头（URL 编码，仅用于显示）；边收边写临时文件，>300 MB 立即中止（413）；ffprobe 校验格式白名单与时长 ≤ 20 分钟；项目 ID = 内容 sha256 前 16 位（重复上传直接返回，失败过的会重试） |
 | GET | /api/projects/{id} | 状态、阶段进度、分析结果（BPM、时长、默认小节数、t_ref、校准增益、试听总增益、音色锚点、声源频谱、段落、分析版本） |
-| GET | /api/projects/{id}/stems/{vocals_hi,bass_hi,drums_hi,other_hi,bass_sub,drums_sub,other_sub}.flac | 试听用 24-bit FLAC（drums_hi/other_hi 为立体声） |
+| GET | /api/projects/{id}/stems/{vocals_hi,bass_hi,drums_hi,other_hi,bass_sub,drums_sub,other_sub,original}.flac | 试听用 24-bit FLAC（drums_hi/other_hi/original 为立体声；original = 原曲，供 A/B 对比；全部按同一个 preview_scale 缩放） |
+| GET | /api/projects/{id}/scene | 这首歌上次保存的场景（经白名单校验，v1 自动升级）；没保存过或文件已不合法时 404 `NO_SAVED_SCENE` |
+| PUT | /api/projects/{id}/scene | 整份替换保存（幂等，原子写到项目目录 `scene.json`）；请求体 > 256 KB → 413，不合法 → 422 `INVALID_SCENE`（不覆盖已保存的） |
 | GET | /api/projects/{id}/choreography | 按识别出的段落自动编排好的场景（§13.5） |
 | POST | /api/projects/{id}/eq | `{scene}` → 这个场景的补偿 EQ（单声道 float32 WAV，1025 点），导出用同一个函数 |
 | GET | /api/assets/hrtf.bin, /api/assets/brir/{room}.wav | DSP 数据（BRIR 缓存文件名带算法版本） |
@@ -215,7 +217,11 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | web timeline | `shared/golden/timeline_vectors.json`（11 个随机多段 + 事件场景） | 方向单位向量、距离、混响量误差 < 1e-9 |
 | engine.structure | 合成一首已知结构的歌（前奏 / 主歌 / 副歌 / 主歌 / 副歌 / 桥段 / 副歌 / 尾声） | 分界落在真实小节线上、标签全对 |
 | engine.tone | 已知倾斜的匹配；参考场景 = 锚点；模型预测的染色 vs 真实渲染；静音 / 调音量不被拉回 | 1e-9；逐位相等；中高频 ±1.5 dB；±0.75 dB |
-| web scene/edit | 切分 / 删除 / 拖分界吸附小节线；事件重叠；预设只改当前段 | 纯函数、不改入参 |
+| web scene/edit | 切分 / 删除 / 拖分界吸附小节线；事件重叠；预设只改当前段；拖事件吸附到拍、碰到同类事件停住、改长短 0.5–30 秒 | 纯函数、不改入参、位置没变返回原对象 |
+| web scene/history | 撤销 / 重做、连续修改合并、新修改清空重做、上限 100 步 | 逐步断言 |
+| engine.pipeline | 原曲 × original_gain 与经典场景 8D 试听（× preview_gain）的响度 | 相差 < 0.1 LU |
+| engine.structure | 音量起伏：相对最响处、静音压到 −60、不满一格也算一格 | 逐点断言 |
+| api | 场景存取：未保存 404、保存后原样取回、不合法 422 且不覆盖、超大 413、跨站 403 | 状态码与内容 |
 | engine.hrtf | 网格点插值 = 原始 IR；90° 两耳时间差；左右对称 | < 1e-9；0.62–0.70 ms；镜像能量差 < 1.5 dB |
 | engine.render | 固定方向与直接卷积；块 32 vs 16 | < −100 dB；< −45 dB |
 | engine.pipeline | 超低频正前方；时长 | <100 Hz 两耳相关 > 0.999；样本数相等 |
@@ -240,7 +246,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | ready | uploading |
 | error | uploading, empty |
 
-非法跳转抛错；`ready` 阶段的非致命错误（如预设加载失败）用提示条显示，不改变阶段。刷新页面时用 localStorage 里的上次项目 ID 自动恢复（存储不可用时忽略）；该项目若正在重新分析，先进 processing 等它就绪。场景编辑不持久化（刷新后回到自动编排）。
+非法跳转抛错；`ready` 阶段的非致命错误（如预设加载失败）用提示条显示，不改变阶段。刷新页面时用 localStorage 里的上次项目 ID 自动恢复（存储不可用时忽略）；该项目若正在重新分析，先进 processing 等它就绪。打开一首歌时先取它保存过的场景，没有再用自动编排。
 
 ### 10.2 3D 场景
 - 世界坐标与音频坐标：人头面朝世界 +z，听者右侧 = 世界 −x，`world = (−x, y, z)`（`src/scene/mapping.ts`）。
@@ -259,16 +265,21 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 ### 10.3 面板与朝向
 - 左栏：音轨名 + 静音 / 独奏；“✨ 自动编排”（重新取 `/choreography`）+ 预设按钮（由 `GET /api/presets` 生成）；多段时提示“预设只改当前这一段”。
 - 右栏头部：音轨名 + 当前段名（彩色标签）。分【轨道】【混音】【段落】【空间】四页：轨道页 = 形状 → 朝向快捷键（水平 / 竖·左右 / 竖·前后 / 斜↗ / 斜↖）→ 倾斜盘 + 所在层 → 距离 → 形状专属参数 → 速度与转动方向 → “精细调节”（起点、高度、三个倾斜角）；混音页 = 音量、声像宽度、混响送出（全曲）；段落页 = 起止与小节数、段落名、这一段的混响量、在此切分 / 删除本段、这一段的事件（可删）、在播放头处给当前音轨加停顿 / 飞过头顶；空间页 = 房间、背后压暗、网格开关、重置视角。
-- 播放条里的时间轴（`src/ui/timeline.ts`）代替进度条：段落色块（前奏 / 尾声 蓝紫、主歌 青、副歌 粉、桥段 金）、上方事件条（停顿 黄、飞过头顶 粉）、白色播放头。点一下跳到那里；拖段落之间的竖线调整分界（吸附小节线，两边至少各留 1 小节）。键盘：空格播放 / 暂停，← / → 跳 5 秒。
+- 播放条里的时间轴（`src/ui/timeline.ts`）代替进度条：段落色块（前奏 / 尾声 蓝紫、主歌 青、副歌 粉、桥段 金）、上方事件条（停顿 黄、飞过头顶 粉）、白色播放头。点一下跳到那里；拖段落之间的竖线调整分界（吸附小节线，两边至少各留 1 小节）。段落色块上叠一层淡淡的原曲音量起伏（每 0.25 秒一点，−40 dB 以下贴底）。
+- 事件条（高 9 像素，最少 10 像素宽）：条的起点 = 停顿“完全停住”的时刻 / 飞过头顶的开始，长度 = duration_s。拖动改位置、拖右端（最多 6 像素、不超过条宽 1/3）改长短，都吸附到拍（1/4 小节），按住 ⌥ 自由拖；只在自己的空档里移动，碰到同一音轨的同类事件就停住；数组顺序不变（拖动中下标稳定）。点一下选中（白框），Delete / Backspace 删除，Esc 取消选中。
+- 撤销 / 重做（`src/scene/history.ts`）：顶栏 ↩ ↪ 与 ⌘Z / ⇧⌘Z（Ctrl+Y）；最多 100 步，间隔不到 0.5 秒的连续修改算一步；换歌清空。所有场景修改都经过 `App.applyScene` 这一个入口记录。
+- 自动保存：改完 0.8 秒没再改就 PUT 整个场景（只存最后一次），顶栏显示“已保存 / 保存中… / 保存失败，稍后重试”（失败 5 秒后重试）；换歌前、关页面（pagehide，keepalive）时把没存的发出去。
+- 键盘：空格播放 / 暂停，← / → 跳 5 秒，B 切换 8D / 原曲，⌘Z / ⇧⌘Z 撤销 / 重做，Delete 删除选中的事件。
 - 编辑规则（`src/scene/edit.ts`，纯函数）：切分在最近的小节线上、新段复制原段；删第 k 段时间并给前一段（删第一段并给后一段）；事件默认停顿 1 小节、飞过头顶 2 小节，同一音轨同类事件不能重叠（停顿含前后各 0.5 秒）；最多 16 段、64 个事件。
 - 倾斜盘（`src/ui/tiltpad.ts`、`src/orbit/orientation.ts`）：俯视人头，白点方向 = 轨道最高点朝向 az，离圆心距离 = 翘起角 tilt（边缘 90°）；写回时统一为 pitch = tilt、roll = 0、yaw = az（可表示任意平面朝向）；读取时由轨道平面法线反算。注意：pitch 90° = 左耳→头顶→右耳的竖环，roll 90° = 正前→头顶→脑后的竖环。
 
 ### 10.4 试听引擎
 9 声道缓冲（vocals_hi, bass_hi, drums_hi L/R, other_hi L/R, bass_sub, drums_sub, other_sub）→ AudioWorklet（输出 0 = 双耳干声，输出 1 = 已逐块乘分段混响量的混响送出）→ BRIR 卷积 → 补偿 EQ 卷积 → 试听总增益 → DynamicsCompressor 兜底 → 输出；并联两路 AnalyserNode 驱动左右电平表。ConvolverNode 一律 `normalize = false`。
+原曲 A/B：原曲缓冲与 9 声道缓冲同一时刻、同一位置开始播放（采样级同步），走另一路直接进兜底限幅；两路各有一个 GainNode，切换时 40 ms 交叉淡化。原曲那一路的增益 = original_gain × preview_scale（与 8D 试听一样响）。听原曲时 3D 画面变灰变暗，并显示“正在听原曲”。
 场景变化后 250 ms 没再变，就 `POST /eq` 取新 EQ，装进闲置的第二个 EQ 卷积器，80 ms 交叉淡化切过去（只用最后一次请求的结果，切换排队不打断淡化）。时间轴编译成纯数据（TypedArray）随参数一起 postMessage 给 Worklet。
 
 ## 11. 不在范围内
-自由画路径、逐参数自动化曲线、桌面 App 打包、头部追踪、导入自定义 HRTF、手机端、场景存盘（刷新即回到自动编排）。
+自由画路径、逐参数自动化曲线、桌面 App 打包、头部追踪、导入自定义 HRTF、手机端、多个场景版本（每首歌只保存一份当前场景）。
 
 ## 12. 第三方素材
 - 人头模型：“Infinite, 3D Head Scan” by Lee Perry-Smith，CC BY 3.0（`web/public/models/LeePerrySmith_License.txt`）。
@@ -285,8 +296,9 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 - v1 场景（`version: 1`，tracks 里混放轨道与混音，room 里有 wet_db）在校验前自动升级为只有一段“全曲”的 v2 场景。
 - 预设都是只有一段的场景；`preset_parts` 把预设拆成（各轨轨道、全曲混音、这一段的混响量）供自动编排复用。
 
-### 13.2 分析结果 v2（`ANALYSIS_VERSION = 2`）
+### 13.2 分析结果（`ANALYSIS_VERSION = 3`）
 在 v1 字段基础上增加 `match_eq_db`（27 个 1/3 倍频程的音色锚点）、`spectra`（各路声源的频带功率）、`sections`（识别出的段落 `{start_s, bars, label, energy_db}`）、`version`。旧项目（没有 version 字段按 1 算）在服务启动时 READY → ANALYZING → READY 自动重新分析，沿用已有分轨，不重新跑 Demucs。
+v3（原曲 A/B 与时间轴）再加：`original_gain`（原曲试听的线性增益：原曲响度对齐到经典场景的 8D 试听响度，即 `LUFS(补偿后混音) + 20·log₁₀(preview_gain)`，限幅 ±24 dB；任一边测不出响度时为 1）、`envelope_db` / `envelope_hop_s`（原曲每 0.25 秒的平均功率，相对最响处的 dB，最低 −60，保留 1 位小数），并生成原曲试听文件 `preview/original.flac`。
 
 ### 13.3 时间轴运动（`engine/timeline.py` = `web/src/orbit/timeline.ts`）
 - 角速度：第 k 段 `ω_k = dir × 360 / T_k`（度/秒，固定形状为 0）；停顿系数 h(t)：`[t_s, t_s+0.5)` 从 1 线性降到 0，停住 duration_s，再 0.5 秒线性升回 1（只作用于 targets）。`ω(t) = ω_段(t) × h(t)` 在每个分段点（段落分界、停顿的四个拐点）之间是线性的，累积相位 `Φ(t) = ∫₀ᵗ ω` 用精确的二次式求，`Φ(t_ref)` 处归零。
