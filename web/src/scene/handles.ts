@@ -1,5 +1,5 @@
 // 3D 拖拽：点击轨道或小球选中音轨；选中音轨的轨道左侧有一个白色圆点，拖它改距离；
-// 暂停时可直接拖小球改起点。倾斜由面板里的倾斜盘负责，这里不再放倾斜把手，保持画面简洁。
+// 暂停时可直接拖小球改起点（改的是播放头所在那一段）。倾斜由面板里的倾斜盘负责，这里不放倾斜把手，保持画面简洁。
 
 import * as THREE from "three";
 import { positionAtPhase, type OrbitParams, type Position } from "../orbit/orbit";
@@ -22,8 +22,8 @@ export interface HandleDeps {
   params(track: TrackName): OrbitParams;
   orbit(track: TrackName): Orbit;
   playing(): boolean;
-  songTime(): number;
-  tRef(): number;
+  /** 该音轨在当前播放时刻的累积相位（度，不含起点与声像偏移）。 */
+  phase(track: TrackName): number;
   select(track: TrackName): void;
   change(track: TrackName, patch: Partial<Orbit>): void;
 }
@@ -122,7 +122,7 @@ export class Handles {
     const p = this.deps.params(track);
     const offset = this.deps.views.get(track)?.offsets()[this.drag.sourceIndex] ?? 0;
     const target = phaseForLocalAngle(p, orbitLocalAngle(p, this.hit.x, this.hit.y, this.hit.z));
-    const advance = p.shape === "fixed" ? 0 : (p.direction * 360 * (this.deps.songTime() - this.deps.tRef())) / p.periodS;
+    const advance = p.shape === "fixed" ? 0 : this.deps.phase(track);
     this.deps.change(track, { start_deg: Math.round(wrap180(target - offset - advance)) });
   };
 

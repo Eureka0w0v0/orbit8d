@@ -48,7 +48,7 @@ describe("HRTF 表", () => {
   });
 });
 
-describe("BinauralCore 与 Python 渲染逐样本一致", () => {
+describe("BinauralCore 与 Python 渲染逐样本一致（三段 + 过渡 + 停顿 + 飞过头顶 + 分段混响量）", () => {
   const table = parseHrtf(toArrayBuffer(readFileSync(golden("render_grid.bin"))));
   const c = JSON.parse(readFileSync(golden("render_case.json"), "utf8")) as RenderCase;
   const data = new Float32Array(toArrayBuffer(readFileSync(golden("render_case.f32"))));
@@ -59,13 +59,16 @@ describe("BinauralCore 与 Python 渲染逐样本一致", () => {
   const refR = data.subarray(base + n, base + 2 * n);
   const refSend = data.subarray(base + 2 * n, base + 3 * n);
 
-  it("声道顺序与后端一致", () => {
+  it("声道顺序与后端一致，用例是多段场景", () => {
     expect(c.channels).toEqual([...INPUT_CHANNELS]);
+    expect(c.scene.sections.length).toBe(3);
+    expect(new Set(c.scene.events.map((e) => e.kind))).toEqual(new Set(["hold", "overhead"]));
   });
 
   it("干声与混响送出误差 < -90 dB", () => {
     const core = new BinauralCore(table, c.sample_rate);
-    core.setParams(buildRenderParams(c.scene, c.bpm_norm, c.t_ref, c.calibration));
+    const timing = { bpmNorm: c.bpm_norm, tRef: c.t_ref, durationS: n / c.sample_rate };
+    core.setParams(buildRenderParams(c.scene, timing, c.calibration));
     const outL = new Float32Array(n);
     const outR = new Float32Array(n);
     const send = new Float32Array(n);

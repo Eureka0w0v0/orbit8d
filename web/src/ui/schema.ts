@@ -15,6 +15,8 @@ interface SceneSchema {
   $defs: Record<string, { properties: Record<string, PropSchema> }>;
 }
 
+export type SchemaDef = "Orbit" | "Mix" | "Section" | "Speed" | "Event";
+
 export class SchemaRanges {
   constructor(private readonly schema: SceneSchema) {}
 
@@ -25,7 +27,7 @@ export class SchemaRanges {
   }
 
   /** def 为 null 表示场景顶层字段。 */
-  of(def: "Orbit" | "Track" | "Room" | "Speed" | null, prop: string): Range {
+  of(def: SchemaDef | null, prop: string): Range {
     const props = def ? this.schema.$defs[def]?.properties : this.schema.properties;
     const p = props?.[prop];
     if (p?.minimum === undefined || p.maximum === undefined) throw new Error(`参数表缺少 ${def ?? "Scene"}.${prop} 的范围`);

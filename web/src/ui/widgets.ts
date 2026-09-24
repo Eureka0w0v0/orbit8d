@@ -4,7 +4,6 @@ import type { ExportFormat } from "../types";
 import { fmt, h } from "./dom";
 import { FORMAT_LABEL, TEXT } from "./labels";
 
-const SEEK_STEPS = 1000;
 const METER_RANGE_DB = 60;
 const ACCEPT = "audio/*,.mp3,.m4a,.aac,.flac,.wav,.aiff,.aif,.ogg,.opus";
 
@@ -12,30 +11,25 @@ export class Transport {
   readonly el: HTMLElement;
   private readonly play: HTMLButtonElement;
   private readonly time: HTMLSpanElement;
-  private readonly seek: HTMLInputElement;
   private readonly info: HTMLSpanElement;
   private readonly meterBars: [HTMLDivElement, HTMLDivElement];
   private readonly meter: HTMLDivElement;
-  private duration = 0;
 
-  constructor(onToggle: () => void, onSeek: (t: number) => void) {
+  /** timeline：代替进度条的时间轴（段落 + 事件 + 播放头）。 */
+  constructor(onToggle: () => void, timeline: HTMLElement) {
     this.play = h("button", { type: "button", class: "play", title: `${TEXT.play}（空格）` }, "▶");
     this.play.addEventListener("click", onToggle);
     this.time = h("span", { class: "time" }, "0:00 / 0:00");
-    this.seek = h("input", { type: "range", min: 0, max: SEEK_STEPS, step: 1, value: 0, class: "seek" });
-    this.seek.addEventListener("change", () => onSeek((Number(this.seek.value) / SEEK_STEPS) * this.duration));
     this.info = h("span", { class: "info" });
     this.meterBars = [h("div", { class: "lvl" }), h("div", { class: "lvl" })];
     this.meter = h("div", { class: "meter", title: "左 / 右耳电平" }, h("span", {}, "L"), h("div", { class: "track" }, this.meterBars[0]), h("span", {}, "R"), h("div", { class: "track" }, this.meterBars[1]));
-    this.el = h("footer", { class: "transport" }, this.play, this.time, this.seek, this.info, this.meter, h("span", { class: "phones" }, `🎧 ${TEXT.headphones}`));
+    this.el = h("footer", { class: "transport" }, this.play, this.time, timeline, this.info, this.meter, h("span", { class: "phones" }, `🎧 ${TEXT.headphones}`));
   }
 
   update(t: number, duration: number, playing: boolean): void {
-    this.duration = duration;
     this.play.textContent = playing ? "❚❚" : "▶";
     this.play.title = `${playing ? TEXT.pause : TEXT.play}（空格）`;
     this.time.textContent = `${fmt.clock(t)} / ${fmt.clock(duration)}`;
-    if (document.activeElement !== this.seek && duration > 0) this.seek.value = String(Math.round((t / duration) * SEEK_STEPS));
   }
 
   /** 电平（dB）→ 条长；-60 dB 以下视为无声。 */

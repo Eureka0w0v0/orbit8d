@@ -1,4 +1,5 @@
-// 试听音频引擎：9 声道缓冲 → AudioWorklet（双耳）+ BRIR 卷积（混响）→ 补偿 EQ → 试听总增益 → 兜底限幅。
+// 试听音频引擎：9 声道缓冲 → AudioWorklet（双耳 + 已乘分段混响量的送出信号）→ BRIR 卷积（混响）
+// → 按场景的补偿 EQ（两个卷积器交叉淡化切换，换 EQ 不爆音）→ 试听总增益 → 兜底限幅。
 
 import workletUrl from "./worklet.ts?worker&url";
 import { parseHrtf } from "./hrtf";
@@ -9,6 +10,7 @@ export const SAMPLE_RATE = 44100;
 const PROCESSOR_NAME = "orbit8d-binaural";
 const START_LATENCY_S = 0.06;
 const PARAM_RAMP_S = 0.05;
+const EQ_FADE_S = 0.08;
 const LIMITER = { threshold: -1, knee: 0, ratio: 20, attack: 0.001, release: 0.1 };
 const METER_FFT = 2048;
 const METER_FLOOR_DB = -90;
@@ -30,8 +32,12 @@ export class AudioEngine {
   readonly ctx: AudioContext;
   private node: AudioWorkletNode | null = null;
   private readonly wet: ConvolverNode;
-  private readonly wetGain: GainNode;
-  private readonly eq: ConvolverNode;
+  private readonly preEq: GainNode;
+  private readonly eqs: [ConvolverNode, ConvolverNode];
+  private readonly eqGains: [GainNode, GainNode];
+  private activeEq = 0;
+  private eqChain: Promise<void> = Promise.resolve();
+  private hasEq = false;
   private readonly master: GainNode;
   private readonly meters: [AnalyserNode, AnalyserNode];
   private readonly meterBuf = new Float32Array(METER_FFT);
@@ -46,9 +52,9 @@ export class AudioEngine {
     this.ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: "interactive" });
     this.wet = this.ctx.createConvolver();
     this.wet.normalize = false; // 必须在设置 buffer 之前
-    this.wetGain = this.ctx.createGain();
-    this.eq = this.ctx.createConvolver();
-    this.eq.normalize = false;
+    this.preEq = this.ctx.createGain();
+    this.eqs = [this.ctx.createConvolver(), this.ctx.createConvolver()];
+    this.eqGains = [this.ctx.createGain(), this.ctx.createGain()];
     this.master = this.ctx.createGain();
     const limiter = this.ctx.createDynamicsCompressor();
     limiter.threshold.value = LIMITER.threshold;
@@ -56,8 +62,13 @@ export class AudioEngine {
     limiter.ratio.value = LIMITER.ratio;
     limiter.attack.value = LIMITER.attack;
     limiter.release.value = LIMITER.release;
-    this.wet.connect(this.wetGain).connect(this.eq);
-    this.eq.connect(this.master).connect(limiter).connect(this.ctx.destination);
+    this.wet.connect(this.preEq);
+    this.eqs.forEach((eq, i) => {
+      eq.normalize = false;
+      this.eqGains[i].gain.value = i === this.activeEq ? 1 : 0;
+      this.preEq.connect(eq).connect(this.eqGains[i]).connect(this.master);
+    });
+    this.master.connect(limiter).connect(this.ctx.destination);
     const split = this.ctx.createChannelSplitter(2);
     this.meters = [this.ctx.createAnalyser(), this.ctx.createAnalyser()];
     limiter.connect(split);
@@ -67,7 +78,7 @@ export class AudioEngine {
     });
   }
 
-  async init(hrtf: ArrayBuffer, eqWav: ArrayBuffer): Promise<void> {
+  async init(hrtf: ArrayBuffer): Promise<void> {
     await this.ctx.audioWorklet.addModule(workletUrl);
     this.node = new AudioWorkletNode(this.ctx, PROCESSOR_NAME, {
       numberOfInputs: 1,
@@ -77,15 +88,39 @@ export class AudioEngine {
       channelCountMode: "explicit",
       channelInterpretation: "discrete",
     });
-    this.node.connect(this.eq, 0);
+    this.node.connect(this.preEq, 0);
     this.node.connect(this.wet, 1);
-    const table = parseHrtf(hrtf);
-    this.post({ type: "init", table });
+    this.post({ type: "init", table: parseHrtf(hrtf) });
+  }
+
+  /** 换补偿 EQ：新 EQ 装进闲着的卷积器，再交叉淡化过去。多次调用按顺序排队，不会打断正在进行的淡化。 */
+  setEq(eqWav: ArrayBuffer): Promise<void> {
+    const job = this.eqChain.then(() => this.swapEq(eqWav));
+    this.eqChain = job.catch(() => undefined); // 一次失败不影响后续切换；错误仍由调用方处理
+    return job;
+  }
+
+  private async swapEq(eqWav: ArrayBuffer): Promise<void> {
     const fir = await this.ctx.decodeAudioData(eqWav);
     const stereo = this.ctx.createBuffer(2, fir.length, SAMPLE_RATE);
     stereo.copyToChannel(fir.getChannelData(0), 0);
     stereo.copyToChannel(fir.getChannelData(0), 1);
-    this.eq.buffer = stereo;
+    if (!this.hasEq) {
+      this.eqs[this.activeEq].buffer = stereo; // 第一次：直接装上
+      this.hasEq = true;
+      return;
+    }
+    const next = 1 - this.activeEq;
+    this.eqs[next].buffer = stereo;
+    const now = this.ctx.currentTime;
+    for (const [i, target] of [[next, 1], [this.activeEq, 0]] as const) {
+      const g = this.eqGains[i].gain;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(target, now + EQ_FADE_S);
+    }
+    this.activeEq = next;
+    await new Promise((r) => window.setTimeout(r, EQ_FADE_S * 1000 + 20));
   }
 
   private post(msg: WorkletMessage): void {
@@ -112,11 +147,9 @@ export class AudioEngine {
     this.wet.buffer = await this.ctx.decodeAudioData(brirWav);
   }
 
-  setParams(params: RenderParams, wetDb: number, previewGain: number): void {
+  setParams(params: RenderParams, previewGain: number): void {
     this.post({ type: "params", params });
-    const now = this.ctx.currentTime;
-    this.wetGain.gain.setTargetAtTime(10 ** (wetDb / 20), now, PARAM_RAMP_S);
-    this.master.gain.setTargetAtTime(previewGain, now, PARAM_RAMP_S);
+    this.master.gain.setTargetAtTime(previewGain, this.ctx.currentTime, PARAM_RAMP_S);
   }
 
   /** 最终输出左右声道的 RMS 电平（dB），用于电平表。 */

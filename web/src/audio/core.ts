@@ -1,7 +1,8 @@
 // 实时双耳渲染核心：与 backend/orbit8d/engine/render.py + pipeline.py 算法逐块一致（docs/SPEC.md §5.2）。
 // 纯计算类，不依赖任何浏览器 API：AudioWorklet 调用它，单元测试也直接调用它。
 
-import { orbitPosition, type Position } from "../orbit/orbit";
+import type { Position } from "../orbit/orbit";
+import { trackPosition, wetDbAt } from "../orbit/timeline";
 import { interpolateHrir, type HrtfTable } from "./hrtf";
 import type { RenderParams, SourceParams } from "./params";
 
@@ -91,12 +92,14 @@ export class BinauralCore {
     if (!p) return;
     for (let start = 0; start < frames; start += BLOCK) {
       const tCenter = songTime + (start + BLOCK / 2) / this.sampleRate;
+      const wet = 10 ** (wetDbAt(p.wet, tCenter) / 20); // 分段混响量：本块恒定
       for (let i = 0; i < p.sources.length; i++) {
         const src = p.sources[i];
         if (src.gain > 0) this.renderSource(src, this.states[i], inputs[src.channel], start, tCenter, p, outL, outR);
         if (src.send > 0) {
           const x = inputs[src.channel];
-          for (let n = 0; n < BLOCK; n++) outSend[start + n] += src.send * x[start + n];
+          const level = src.send * wet;
+          for (let n = 0; n < BLOCK; n++) outSend[start + n] += level * x[start + n];
         }
       }
       this.renderSub(inputs, start, p.subGains, outL, outR);
@@ -113,7 +116,7 @@ export class BinauralCore {
     outL: Float32Array,
     outR: Float32Array,
   ): void {
-    const pos = orbitPosition(src.orbit, tCenter, p.tRef, src.offsetDeg, this.pos);
+    const pos = trackPosition(p.motions[src.track], tCenter, src.offsetDeg, this.pos);
     const dist = Math.min(MAX_DISTANCE_M, Math.max(MIN_DISTANCE_M, pos.dist));
     const gain = src.gain * (REF_DISTANCE_M / dist);
     const rear = Math.max(0, -Math.cos(pos.el * DEG) * Math.cos(pos.az * DEG));

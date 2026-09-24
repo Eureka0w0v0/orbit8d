@@ -39,8 +39,18 @@ export const api = {
   project: (id: string) => getJson<Project>(`/api/projects/${id}`),
   stem: (id: string, name: string) => getBytes(`/api/projects/${id}/stems/${name}.flac`),
   hrtf: () => getBytes("/api/assets/hrtf.bin"),
-  eq: () => getBytes("/api/assets/eq.wav"),
   brir: (room: RoomName) => getBytes(`/api/assets/brir/${room}.wav`),
+  choreography: (id: string) => getJson<Scene>(`/api/projects/${id}/choreography`),
+
+  /** 这个场景的补偿 EQ（单声道 WAV 冲激响应），导出用的是同一个。 */
+  async sceneEq(projectId: string, scene: Scene): Promise<ArrayBuffer> {
+    const resp = await fetch(`/api/projects/${projectId}/eq`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scene }),
+    });
+    return (await check(resp)).arrayBuffer();
+  },
   exportRecord: (id: string) => getJson<ExportRecord>(`/api/exports/${id}`),
   exportUrl: (id: string) => `/api/exports/${id}/file`,
 

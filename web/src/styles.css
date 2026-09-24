@@ -212,8 +212,17 @@ body:not([data-phase="ready"]) .panel {
 .preset {
   padding: 9px 6px;
 }
-.preset:last-child:nth-child(odd) {
+.preset.auto {
   grid-column: span 2;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 45%, transparent), color-mix(in srgb, var(--accent-2) 45%, transparent));
+  border: none;
+  font-weight: 600;
+}
+.preset:last-child:nth-child(even) {
+  grid-column: span 2;
+}
+.hint.scope {
+  margin: 10px 0 0;
 }
 .toggle {
   display: flex;
@@ -312,8 +321,95 @@ body:not([data-phase="ready"]) .transport {
   color: var(--muted);
   white-space: nowrap;
 }
-.seek {
+/* 时间轴（代替进度条）：段落色块 + 事件条 + 播放头 */
+.timeline {
+  position: relative;
   flex: 1;
+  min-width: 160px;
+  height: 34px;
+}
+.tl-marks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 7px;
+}
+.tl-mark {
+  position: absolute;
+  top: 1px;
+  height: 5px;
+  min-width: 5px;
+  border-radius: 3px;
+}
+.tl-mark.hold {
+  background: #ffc24b;
+}
+.tl-mark.overhead {
+  background: #ff6b9a;
+}
+.tl-lane {
+  position: absolute;
+  top: 9px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-radius: 7px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  touch-action: none;
+}
+.tl-block {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  padding-left: 6px;
+  font-size: 11px;
+  line-height: 25px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  color: rgba(255, 255, 255, 0.72);
+  background: color-mix(in srgb, var(--c) 30%, transparent);
+  border-right: 1px solid rgba(11, 13, 18, 0.7);
+}
+.tl-block.current {
+  color: #fff;
+  background: color-mix(in srgb, var(--c) 62%, transparent);
+}
+.tl-grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  margin-left: -4px;
+  cursor: ew-resize;
+  z-index: 2;
+}
+.tl-grip::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.55);
+}
+.tl-grip:hover::after {
+  width: 3px;
+  left: 3px;
+  background: #fff;
+}
+.tl-head {
+  position: absolute;
+  top: 5px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+  pointer-events: none;
 }
 .phones {
   display: none;
@@ -483,6 +579,10 @@ body.dragging .dropzone {
   background: #3a1d26;
   border: 1px solid #6b2c3d;
 }
+.toast.info {
+  background: #1d2a3a;
+  border-color: #2c4a6b;
+}
 
 @media (min-width: 1500px) {
   .phones {
@@ -518,6 +618,55 @@ body.dragging .dropzone {
 }
 .panel-title {
   font-size: 14px;
+}
+.section-chip {
+  margin-left: auto;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--c) 45%, transparent);
+}
+.section-summary {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.button-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.button-row button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.event-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid #ffc24b;
+}
+.event-row.overhead {
+  border-left-color: #ff6b9a;
+}
+.event-kind {
+  font-weight: 600;
+}
+.event-meta {
+  flex: 1;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .segmented.tabs {
   margin-bottom: 12px;

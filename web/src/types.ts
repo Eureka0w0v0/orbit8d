@@ -27,8 +27,8 @@ export interface Orbit {
   lift_deg: number;
 }
 
-export interface Track {
-  orbit: Orbit;
+/** 全曲共用的混音设置（不随分段变化）。 */
+export interface Mix {
   gain_db: number;
   width_deg: number;
   reverb_send: number;
@@ -36,16 +36,46 @@ export interface Track {
   solo: boolean;
 }
 
-export interface Room {
-  name: RoomName;
+/** 一段：从 start_s 开始到下一段开始，各音轨沿各自的轨道走；wet_db 是这一段的混响量。 */
+export interface Section {
+  start_s: number;
+  label: string;
+  orbits: Record<TrackName, Orbit>;
   wet_db: number;
 }
 
+export type EventKind = "hold" | "overhead";
+
+/** 停顿：0.5 秒减速 → 停住 duration_s → 0.5 秒加速；飞过头顶：duration_s 内经过正上方。 */
+export interface SceneEvent {
+  t_s: number;
+  kind: EventKind;
+  duration_s: number;
+  targets: TrackName[];
+}
+
+export interface Room {
+  name: RoomName;
+}
+
 export interface Scene {
-  version: 1;
-  tracks: Record<TrackName, Track>;
+  version: 2;
+  mix: Record<TrackName, Mix>;
+  sections: Section[];
+  events: SceneEvent[];
   room: Room;
   rear_darken_db: number;
+}
+
+/** 与后端 scene.HOLD_RAMP_S 相同。 */
+export const HOLD_RAMP_S = 0.5;
+
+/** 自动识别的段落（后端 structure.SectionInfo）。 */
+export interface SectionInfo {
+  start_s: number;
+  bars: number;
+  label: string;
+  energy_db: number;
 }
 
 export type CalibrationKey = TrackName | "sub";
@@ -59,6 +89,10 @@ export interface Analysis {
   t_ref: number;
   calibration: Record<CalibrationKey, number>;
   preview_gain: number;
+  match_eq_db: number[];
+  spectra: Record<string, number[]>;
+  sections: SectionInfo[];
+  version: number;
 }
 
 export type ProjectState = "UPLOADED" | "DECODING" | "SEPARATING" | "ANALYZING" | "READY" | "FAILED";

@@ -2,7 +2,8 @@
 // 视觉层级：选中音轨醒目，其余音轨细而淡，避免画面杂乱。
 
 import * as THREE from "three";
-import { orbitPosition, positionAtPhase, type OrbitParams, type Position } from "../orbit/orbit";
+import { positionAtPhase, type OrbitParams, type Position } from "../orbit/orbit";
+import { trackPosition, type TrackMotion } from "../orbit/timeline";
 import type { TrackName } from "../types";
 import { directionToWorld, visualRadius, type Vec3 } from "./mapping";
 
@@ -110,12 +111,12 @@ export class OrbitView {
     if (sphere) this.group.remove(sphere);
   }
 
-  /** 按歌曲时间摆放声源小球（与音频渲染用同一个轨道公式）。 */
-  setTime(songTime: number, tRef: number): void {
+  /** 按歌曲时间摆放声源小球（与音频渲染用同一条时间轴：段落过渡、停顿、飞过头顶都看得见）。 */
+  setPositions(motion: TrackMotion, songTime: number): void {
     if (!this.state) return;
     const offsets = this.offsets();
     this.spheres.forEach((sphere, i) => {
-      orbitPosition(this.state!.params, songTime, tRef, offsets[i], this.pos);
+      trackPosition(motion, songTime, offsets[i], this.pos);
       worldPoint(this.pos, sphere.position);
     });
   }
