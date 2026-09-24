@@ -110,7 +110,8 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 
 分频：`low = sosfiltfilt(butter(2, 120 Hz))`，`high = x − low`（零相位、相加完全还原）。分离残差 `orig − Σstems` 并入 other。
 
-### 5.2 每块处理（块长 128 采样，与 Web Audio 渲染量子一致）
+### 5.2 每块处理（块长 32 采样；浏览器把 128 采样的渲染量子拆成 4 块）
+块长 32 时方向切换误差比 128 低约 13 dB（6 秒一圈且带仰角起伏的实测：与 16 采样块相比 −53.9 dB）。
 对每个运动声源、每个块 b（中心时刻 t_b）：
 1. 由轨道求 `(az, el, d)`。
 2. 背后压暗：`hp` 为一阶 Butterworth 高通（3 kHz，因果，状态跨块连续）；`r = max(0, −z)`，`z = cos(el)·cos(az)`；`x' = x − r·cut·hp(x)`，`cut = 1 − 10^(−rear_darken_db/20)`。
@@ -198,7 +199,7 @@ sub：HRIR 取 (0°, 0°)，无压暗、无距离增益，只乘 sub 的校准�
 | engine.orbit | 各形状固定时刻 (az, el, d) | 与 `shared/golden/orbit_vectors.json` 误差 < 1e-9 |
 | web orbit | 同一份黄金向量 | 误差 < 1e-6 |
 | engine.hrtf | 网格点插值 = 原始 IR；90° 两耳时间差；左右对称 | < 1e-9；0.62–0.70 ms；镜像能量差 < 1.5 dB |
-| engine.render | 脉冲 @90° 与直接卷积；块 128 vs 16 | < −100 dB；< −45 dB |
+| engine.render | 固定方向与直接卷积；块 32 vs 16 | < −100 dB；< −45 dB |
 | engine.pipeline | 超低频正前方；时长 | <100 Hz 两耳相关 > 0.999；样本数相等 |
 | engine.master | 限幅后真峰值 | ≤ −1.0 dBTP |
 | web audio core | 黄金渲染用例（合成 HRIR 网格 + 0.5 s 噪声） | 与 Python 输出差异 < −90 dB |
