@@ -62,25 +62,19 @@ export class Stage {
     this.renderer.setAnimationLoop((time) => this.frame(time));
   }
 
-  /** 地面上的同心距离圈（0.5 / 1 / 2 / 4 m），帮助判断远近。 */
+  /** 肩膀下方两圈很淡的距离参考圈（1 m / 2 m）。不画实心地面，也不写深度：比肩膀低的轨道照样完整可见。 */
   private buildFloor(ringRadius: (distM: number) => number): THREE.Group {
     const group = new THREE.Group();
     group.position.y = FLOOR_Y;
     for (const d of DISTANCE_RINGS_M) {
       const r = ringRadius(d);
       const geo = new THREE.RingGeometry(r - 0.0015, r + 0.0015, 128);
-      const mat = new THREE.MeshBasicMaterial({ color: 0x3a4152, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+      const mat = new THREE.MeshBasicMaterial({ color: 0x3a4152, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false });
       const ring = new THREE.Mesh(geo, mat);
       ring.rotation.x = -Math.PI / 2;
+      ring.renderOrder = -2; // 先画，轨道和色点叠在它上面
       group.add(ring);
     }
-    const disc = new THREE.Mesh(
-      new THREE.CircleGeometry(ringRadius(4) * 1.08, 96),
-      new THREE.MeshBasicMaterial({ color: 0x11141b, transparent: true, opacity: 0.9 }),
-    );
-    disc.rotation.x = -Math.PI / 2;
-    disc.position.y = -0.001;
-    group.add(disc);
     return group;
   }
 
