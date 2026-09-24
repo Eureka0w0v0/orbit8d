@@ -64,13 +64,19 @@ def true_peak(x: np.ndarray) -> np.ndarray:
     return np.abs(up).max(axis=1).reshape(len(x), OVERSAMPLE).max(axis=1)
 
 
+def integrated_loudness(x: np.ndarray, sr: int) -> float:
+    """ITU-R BS.1770 整体响度（LUFS）；全静音等测不出来时返回 -inf。"""
+    value = float(pyln.Meter(sr).integrated_loudness(x))
+    return value if np.isfinite(value) else float("-inf")
+
+
 def master_gain(x: np.ndarray, sr: int) -> float:
     """取较小者：到目标响度的增益 / 让 99% 的 30 ms 片段被压不超过 1 dB 的增益。"""
     w = int(LIMITER_WINDOW_S * sr)
     peak = true_peak(x)
     blocks = peak[: len(peak) // w * w].reshape(-1, w).max(axis=1)
     by_peak = 10 ** ((CEILING_DBTP + LIMIT_ALLOW_DB) / 20) / max(np.percentile(blocks, LIMIT_PERCENTILE), EPS)
-    loudness = pyln.Meter(sr).integrated_loudness(x)
+    loudness = integrated_loudness(x, sr)
     if not np.isfinite(loudness):
         return float(by_peak)
     return float(min(by_peak, 10 ** ((TARGET_LUFS - loudness) / 20)))

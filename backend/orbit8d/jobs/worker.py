@@ -34,6 +34,7 @@ SOURCE_FILE = "source"
 ORIG_FILE = "orig.wav"
 STEMS_DIR = "stems"
 PREVIEW_DIR = "preview"
+ORIGINAL_PREVIEW = "original"
 ANALYSIS_FILE = "analysis.json"
 RENDER_FILE = "render.wav"
 OUTPUT_STEM = "output"
@@ -177,7 +178,7 @@ class JobRunner:
         orig, stems = self._load_audio(pdir)
         src, analysis = analyze(orig, stems, SAMPLE_RATE, self._renderer)
         store.set_project_progress(pid, ANALYZED_PROGRESS)
-        files = preview_stems(src)
+        files = {**preview_stems(src), ORIGINAL_PREVIEW: orig}  # 原曲也给一份，供试听时 A/B 对比
         scale = max(1.0, max(float(np.abs(x).max()) for x in files.values()))  # 24-bit 不能超过 ±1，统一缩放
         (pdir / PREVIEW_DIR).mkdir(exist_ok=True)
         for name, data in files.items():

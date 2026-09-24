@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -30,7 +30,7 @@ from orbit8d.engine.scene import PRESETS, Scene, canonical_json, preset
 from orbit8d.engine.structure import SectionInfo
 from orbit8d.jobs.states import ExportState, ProjectState
 from orbit8d.jobs.store import ExportRecord, NotFound, ProjectRecord, Store
-from orbit8d.jobs.worker import PREVIEW_DIR, SOURCE_FILE, JobRunner, Separator, safe_name
+from orbit8d.jobs.worker import ORIGINAL_PREVIEW, PREVIEW_DIR, SOURCE_FILE, JobRunner, Separator, safe_name
 from orbit8d.media.ffmpeg import OUTPUT_FORMATS, MediaError, available_formats, probe
 
 log = logging.getLogger(__name__)
@@ -40,8 +40,9 @@ DEV_WEB_PORT = 5173
 ID_LEN = 16
 FILENAME_HEADER = "x-filename"
 PREVIEW_NAMES = frozenset(
-    {"vocals_hi", "bass_hi", "drums_hi", "other_hi", "bass_sub", "drums_sub", "other_sub"}
+    {"vocals_hi", "bass_hi", "drums_hi", "other_hi", "bass_sub", "drums_sub", "other_sub", ORIGINAL_PREVIEW}
 )
+MAX_SCENE_BYTES = 256 * 1024  # 场景 JSON 最多约 30 KB（16 段 × 4 轨 + 64 个事件），留足余量
 BAR_CHOICES = (1, 2, 4, 8)
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 WEB_DIST = REPO_ROOT / "web" / "dist"
@@ -222,6 +223,41 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         buf = io.BytesIO()
         sf.write(buf, fir.astype("float32"), SAMPLE_RATE, format="WAV", subtype="FLOAT")
         return Response(buf.getvalue(), media_type="audio/wav")
+
+    @app.get("/api/projects/{pid}/scene")
+    def get_scene(pid: str) -> dict:
+        """用户上次保存的场景；没保存过（或旧文件已不合法）时 404，前端改用自动编排。"""
+        ready_analysis(pid)
+        text = store.load_scene(pid)
+        if text is None:
+            raise ApiError(404, "NO_SAVED_SCENE", "这首歌还没有保存过场景")
+        try:
+            return Scene.model_validate_json(text).model_dump(mode="json")
+        except ValidationError:
+            log.warning("saved scene is invalid", extra={"event": "scene.invalid", "project_id": pid})
+            raise ApiError(404, "NO_SAVED_SCENE", "保存的场景已不可用") from None
+
+    @app.put("/api/projects/{pid}/scene", status_code=204)
+    async def put_scene(request: Request, pid: str) -> Response:
+        """整份替换保存（幂等）；先按大小上限拒绝，再按场景白名单校验。"""
+        ready_analysis(pid)
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > MAX_SCENE_BYTES:
+            raise ApiError(413, "TOO_LARGE", "场景数据太大")
+        raw = await request.body()
+        if len(raw) > MAX_SCENE_BYTES:
+            raise ApiError(413, "TOO_LARGE", "场景数据太大")
+        try:
+            scene = Scene.model_validate_json(raw)
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            where = ".".join(str(p) for p in first.get("loc", ()))
+            raise ApiError(
+                422, "INVALID_SCENE", f"场景参数不合法：{where} {first.get('msg', '')}".strip()
+            ) from None
+        store.save_scene(pid, canonical_json(scene))
+        log.info("scene saved", extra={"event": "scene.save", "project_id": pid, "bytes": len(raw)})
+        return Response(status_code=204)
 
     @app.get("/api/projects/{pid}/stems/{name}.flac")
     def get_stem(pid: str, name: str) -> FileResponse:

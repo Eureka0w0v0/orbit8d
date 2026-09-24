@@ -9,6 +9,7 @@ from orbit8d.engine.scene import HOLD_RAMP_S, Scene
 from orbit8d.engine.structure import (
     BRIDGE,
     CHORUS,
+    ENVELOPE_FLOOR_DB,
     INTRO,
     OUTRO,
     VERSE,
@@ -16,6 +17,7 @@ from orbit8d.engine.structure import (
     SectionInfo,
     bar_starts,
     detect_sections,
+    loudness_envelope,
 )
 
 SR = 22050
@@ -133,3 +135,14 @@ def test_choreography_of_single_section_is_classic():
     scene = choreograph([SectionInfo(0.0, 3, WHOLE, -20.0)], default_bars=2, bpm_norm=BPM)
     assert len(scene.sections) == 1 and scene.events == []
     assert all(o.shape == "circle" and o.speed.bars == 2 for o in scene.sections[0].orbits.values())
+
+
+def test_loudness_envelope_is_relative_to_the_loudest_moment():
+    sr = 8000  # 0.25 秒正好 2000 个采样
+    x = np.concatenate([np.full(sr, 0.5), np.full(sr, 0.05), np.zeros(sr // 2)])
+    env = loudness_envelope(np.stack([x, x], axis=1), sr, hop_s=0.25)
+    assert len(env) == 10
+    assert env[:4] == [0.0] * 4 and all(v == pytest.approx(-20.0, abs=0.1) for v in env[4:8])
+    assert env[8:] == [ENVELOPE_FLOOR_DB] * 2  # 静音压到下限
+    assert loudness_envelope(np.zeros(sr), sr) == [ENVELOPE_FLOOR_DB] * 4
+    assert len(loudness_envelope(np.ones(sr + 1), sr)) == 5  # 最后不满一格的也算一格

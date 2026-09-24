@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
 RECORD_FILE = "record.json"
+SCENE_FILE = "scene.json"
 INTERRUPTED = "INTERRUPTED"
 
 
@@ -150,6 +151,17 @@ class Store:
                 )
                 return
             self.transition_project(pid, ProjectState.FAILED, error={"code": code, "message": message})
+
+    # ---- 用户保存的场景（整份替换，原子写，天然幂等） ----
+    def save_scene(self, pid: str, text: str) -> None:
+        path = self.project_dir(pid) / SCENE_FILE
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+
+    def load_scene(self, pid: str) -> str | None:
+        path = self.project_dir(pid) / SCENE_FILE
+        return path.read_text(encoding="utf-8") if path.exists() else None
 
     # ---- 导出 ----
     def find_export(self, eid: str) -> ExportRecord | None:

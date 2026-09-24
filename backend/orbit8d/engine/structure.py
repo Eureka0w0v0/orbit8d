@@ -25,6 +25,9 @@ CHORUS_SPLIT = 0.5  # 中间各段：能量高于 最低 + 50% 极差 → 副歌
 MIN_CONTRAST_DB = 1.5  # 中间各段能量差不到 1.5 dB：只把最响的一段当副歌
 EPS = 1e-12
 
+ENVELOPE_HOP_S = 0.25  # 时间轴底下的音量起伏：每 0.25 秒一个点
+ENVELOPE_FLOOR_DB = -60.0
+
 INTRO, VERSE, CHORUS, BRIDGE, OUTRO, WHOLE = "前奏", "主歌", "副歌", "桥段", "尾声", "全曲"
 
 
@@ -37,6 +40,23 @@ class SectionInfo:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def loudness_envelope(x: np.ndarray, sr: int, hop_s: float = ENVELOPE_HOP_S) -> list[float]:
+    """每 hop_s 秒的平均功率（立体声两声道相加），相对全曲最响处的 dB，最低 -60，保留 1 位小数。"""
+    power = np.asarray(x, dtype=np.float64) ** 2
+    if power.ndim == 2:
+        power = power.sum(axis=1)
+    hop = max(1, int(round(hop_s * sr)))
+    n = -(-len(power) // hop)
+    padded = np.zeros(n * hop)
+    padded[: len(power)] = power
+    frames = padded.reshape(n, hop).mean(axis=1)
+    peak = float(frames.max()) if n else 0.0
+    if peak <= EPS:
+        return [ENVELOPE_FLOOR_DB] * n
+    db = np.maximum(10 * np.log10(np.maximum(frames, EPS) / peak), ENVELOPE_FLOOR_DB)
+    return [round(float(v), 1) for v in db]
 
 
 def bar_seconds(bpm_norm: float) -> float:

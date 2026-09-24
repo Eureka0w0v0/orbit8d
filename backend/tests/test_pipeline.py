@@ -130,3 +130,15 @@ def test_export_is_mastered_and_same_length(renderer, analyzed):
     out = renderer.export(src, preset("dual", analysis.default_bars), analysis)
     assert out.shape == orig.shape and np.isfinite(out).all()
     assert 20 * np.log10(true_peak(out).max()) <= CEILING_DBTP + 0.05
+
+
+def test_original_preview_is_loudness_matched_to_the_8d_preview(renderer, analyzed):
+    """A/B 对比：原曲 × original_gain 与经典场景的 8D 试听（× preview_gain）一样响。"""
+    from orbit8d.engine.master import integrated_loudness
+
+    orig, _, src, analysis = analyzed
+    preview = (
+        renderer.render_mix(src, preset("classic", analysis.default_bars), analysis) * analysis.preview_gain
+    )
+    matched = orig * analysis.original_gain
+    assert integrated_loudness(matched, SR) == pytest.approx(integrated_loudness(preview, SR), abs=0.1)

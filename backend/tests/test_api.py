@@ -18,7 +18,8 @@ from tests.conftest import FakeSeparator, write_song
 
 BASE = "http://127.0.0.1:8765"
 WAIT_S = 120
-PREVIEW = ("vocals_hi", "bass_hi", "drums_hi", "other_hi", "bass_sub", "drums_sub", "other_sub")
+PREVIEW = ("vocals_hi", "bass_hi", "drums_hi", "other_hi", "bass_sub", "drums_sub", "other_sub", "original")
+STEREO_PREVIEW = ("drums_hi", "other_hi", "original")
 
 
 @pytest.fixture
@@ -69,7 +70,7 @@ def test_upload_to_ready_exposes_analysis_and_preview_stems(client, ready_projec
         resp = client.get(f"/api/projects/{ready_project}/stems/{name}.flac")
         assert resp.status_code == 200 and resp.headers["content-type"] == "audio/flac"
         data, sr = sf.read(io.BytesIO(resp.content), always_2d=True)
-        assert sr == 44100 and data.shape[1] == (2 if name in ("drums_hi", "other_hi") else 1)
+        assert sr == 44100 and data.shape[1] == (2 if name in STEREO_PREVIEW else 1)
 
 
 def test_duplicate_upload_reuses_project(client, ready_project, tmp_path):
@@ -278,3 +279,34 @@ def test_stale_projects_are_reanalyzed_on_startup_without_reseparating(client, r
         body = fresh.get(f"/api/projects/{ready_project}").json()
     assert body["state"] == "READY" and body["analysis"]["version"] == ANALYSIS_VERSION
     assert separator.calls == 0
+
+
+def test_analysis_v3_has_original_gain_and_envelope(client, ready_project):
+    analysis = client.get(f"/api/projects/{ready_project}").json()["analysis"]
+    assert analysis["version"] == 3 and 0 < analysis["original_gain"] < 16
+    env, hop = analysis["envelope_db"], analysis["envelope_hop_s"]
+    assert hop == 0.25 and len(env) == pytest.approx(6.0 / hop, abs=1)
+    assert max(env) == 0.0 and min(env) >= -60.0
+
+
+def test_scene_is_saved_per_project_and_validated(client, ready_project):
+    url = f"/api/projects/{ready_project}/scene"
+    assert client.get(url).status_code == 404  # 还没保存过
+    scene = Scene().model_dump(mode="json")
+    scene["sections"][0]["label"] = "我的版本"
+    scene["mix"]["drums"]["gain_db"] = -4.5
+    assert client.put(url, json=scene).status_code == 204
+    assert client.put(url, json=scene).status_code == 204  # 整份替换，重复保存结果不变
+    back = client.get(url).json()
+    assert Scene.model_validate(back) == Scene.model_validate(scene)
+
+    bad = {**scene, "rear_darken_db": 99}
+    resp = client.put(url, json=bad)
+    assert resp.status_code == 422 and resp.json()["code"] == "INVALID_SCENE"
+    assert client.get(url).json()["mix"]["drums"]["gain_db"] == -4.5  # 不合法的不会覆盖已保存的
+
+    huge = b'{"x": "' + b"a" * 300_000 + b'"}'
+    resp = client.put(url, content=huge, headers={"Content-Type": "application/json"})
+    assert resp.status_code == 413
+    assert client.put("/api/projects/0123456789abcdef/scene", json=scene).status_code == 404
+    assert client.put(url, json=scene, headers={"Origin": "https://evil.example"}).status_code == 403
