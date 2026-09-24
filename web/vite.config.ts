@@ -13,6 +13,7 @@ export default defineConfig({
   build: {
     outDir: "dist",
     target: "es2022",
+    chunkSizeWarningLimit: 1500, // three.js 本身就有 ~600 KB；本地应用从 127.0.0.1 加载，体积不是瓶颈
   },
   worker: {
     format: "es",

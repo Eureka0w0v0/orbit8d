@@ -1,0 +1,136 @@
+// 每条音轨一个轨道视图：彩色管状轨迹 + 发光声源小球（立体声轨是一对小球）+ 指向人头的细线。
+
+import * as THREE from "three";
+import { orbitPosition, positionAtPhase, type OrbitParams, type Position } from "../orbit/orbit";
+import type { TrackName } from "../types";
+import { directionToWorld, visualRadius, type Vec3 } from "./mapping";
+
+export const TRACK_COLORS: Record<TrackName, number> = {
+  vocals: 0xff6b9a,
+  drums: 0xffc24b,
+  bass: 0x8f7dff,
+  other: 0x35d6c3,
+};
+
+const PATH_SEGMENTS = 360;
+const SPIRAL_CYCLES = 4;
+const TUBE_RADIUS = 0.0028;
+const TUBE_RADIUS_SELECTED = 0.0045;
+const SPHERE_RADIUS = 0.026;
+const PAIR_SPHERE_RADIUS = 0.019;
+const EMISSIVE = { idle: 2.2, muted: 0.25 };
+const PATH_OPACITY = { idle: 0.35, selected: 0.95, muted: 0.12 };
+
+export interface OrbitViewState {
+  params: OrbitParams;
+  widthDeg: number;
+  stereo: boolean;
+  audible: boolean;
+  selected: boolean;
+}
+
+export function worldPoint(pos: Position, out = new THREE.Vector3()): THREE.Vector3 {
+  const v: Vec3 = directionToWorld(pos.az, pos.el);
+  return out.set(v.x, v.y, v.z).multiplyScalar(visualRadius(pos.dist));
+}
+
+export class OrbitView {
+  readonly group = new THREE.Group();
+  readonly spheres: THREE.Mesh[] = [];
+  private readonly tethers: THREE.Line[] = [];
+  private readonly pathMaterial: THREE.MeshBasicMaterial;
+  private readonly sphereMaterial: THREE.MeshStandardMaterial;
+  private readonly tetherMaterial: THREE.LineBasicMaterial;
+  private path: THREE.Mesh | null = null;
+  private pathKey = "";
+  private state: OrbitViewState | null = null;
+  private readonly pos: Position = { az: 0, el: 0, dist: 0 };
+
+  constructor(readonly track: TrackName) {
+    const color = TRACK_COLORS[track];
+    this.pathMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, depthWrite: false });
+    this.sphereMaterial = new THREE.MeshStandardMaterial({ color, emissive: color, roughness: 0.3 });
+    this.tetherMaterial = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.18 });
+    this.group.name = `orbit-${track}`;
+  }
+
+  get params(): OrbitParams | null {
+    return this.state?.params ?? null;
+  }
+
+  offsets(): number[] {
+    if (!this.state) return [0];
+    return this.state.stereo ? [-this.state.widthDeg / 2, this.state.widthDeg / 2] : [0];
+  }
+
+  update(state: OrbitViewState): void {
+    this.state = state;
+    const key = JSON.stringify({ ...state.params, startDeg: 0, periodS: 0, direction: 0, sel: state.selected });
+    if (key !== this.pathKey) {
+      this.pathKey = key;
+      this.rebuildPath(state);
+    }
+    const count = state.stereo ? 2 : 1;
+    while (this.spheres.length < count) this.addSphere(state.stereo);
+    while (this.spheres.length > count) this.removeSphere();
+    for (const s of this.spheres) s.scale.setScalar((state.stereo ? PAIR_SPHERE_RADIUS : SPHERE_RADIUS) / SPHERE_RADIUS);
+    this.sphereMaterial.emissiveIntensity = state.audible ? EMISSIVE.idle : EMISSIVE.muted;
+    this.pathMaterial.opacity = !state.audible ? PATH_OPACITY.muted : state.selected ? PATH_OPACITY.selected : PATH_OPACITY.idle;
+    this.tetherMaterial.opacity = state.audible ? 0.18 : 0.05;
+  }
+
+  private rebuildPath(state: OrbitViewState): void {
+    if (this.path) {
+      this.group.remove(this.path);
+      this.path.geometry.dispose();
+      this.path = null;
+    }
+    if (state.params.shape === "fixed") return;
+    const cycles = state.params.shape === "spiral" ? SPIRAL_CYCLES : 1;
+    const points: THREE.Vector3[] = [];
+    const n = PATH_SEGMENTS * cycles;
+    for (let i = 0; i < n; i++) {
+      points.push(worldPoint(positionAtPhase(state.params, (360 * cycles * i) / n, this.pos)));
+    }
+    const curve = new THREE.CatmullRomCurve3(points, true);
+    const radius = state.selected ? TUBE_RADIUS_SELECTED : TUBE_RADIUS;
+    this.path = new THREE.Mesh(new THREE.TubeGeometry(curve, n, radius, 6, true), this.pathMaterial);
+    this.path.userData = { track: this.track, kind: "path" };
+    this.group.add(this.path);
+  }
+
+  private addSphere(_stereo: boolean): void {
+    const sphere = new THREE.Mesh(new THREE.SphereGeometry(SPHERE_RADIUS, 24, 16), this.sphereMaterial);
+    sphere.userData = { track: this.track, kind: "source", index: this.spheres.length };
+    const tether = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), this.tetherMaterial);
+    this.spheres.push(sphere);
+    this.tethers.push(tether);
+    this.group.add(sphere, tether);
+  }
+
+  private removeSphere(): void {
+    const sphere = this.spheres.pop();
+    const tether = this.tethers.pop();
+    if (sphere) {
+      this.group.remove(sphere);
+      sphere.geometry.dispose();
+    }
+    if (tether) {
+      this.group.remove(tether);
+      tether.geometry.dispose();
+    }
+  }
+
+  /** 按歌曲时间摆放声源小球（与音频渲染用同一个轨道公式）。 */
+  setTime(songTime: number, tRef: number): void {
+    if (!this.state) return;
+    const offsets = this.offsets();
+    this.spheres.forEach((sphere, i) => {
+      orbitPosition(this.state!.params, songTime, tRef, offsets[i], this.pos);
+      worldPoint(this.pos, sphere.position);
+      const attr = this.tethers[i].geometry.getAttribute("position") as THREE.BufferAttribute;
+      attr.setXYZ(1, sphere.position.x, sphere.position.y, sphere.position.z);
+      attr.needsUpdate = true;
+    });
+  }
+}
