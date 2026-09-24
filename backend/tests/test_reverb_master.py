@@ -13,7 +13,14 @@ from orbit8d.engine.master import (
     master_gain,
     true_peak,
 )
-from orbit8d.engine.reverb import DIRECTIONS, ROOMS, synth_brir
+from orbit8d.engine.reverb import (
+    DIRECTIONS,
+    EARLY_REFLECTIONS,
+    ER_ENERGY_DB,
+    ROOMS,
+    early_reflections,
+    synth_brir,
+)
 
 SR = 44100
 
@@ -49,9 +56,24 @@ def schroeder_rt60(ir: np.ndarray, lo: float, hi: float) -> float:
 
 
 def test_brir_is_normalized_and_deterministic(hall):
+    """尾巴每耳能量 1，早期反射再叠加 10^(3/10) 倍：总能量约 1 + 2（两者不相关）。"""
     assert hall.shape[0] == 2 and hall.dtype == np.float32 and np.isfinite(hall).all()
-    assert (hall.astype(np.float64) ** 2).sum(axis=1).mean() == pytest.approx(1.0, rel=1e-3)
+    total = (hall.astype(np.float64) ** 2).sum(axis=1).mean()
+    assert total == pytest.approx(1.0 + 10 ** (ER_ENERGY_DB / 10), rel=0.05)
     assert np.array_equal(hall, synth_brir(flat_grid(), "hall", SR))
+
+
+def test_early_reflections_arrive_between_5_and_25_ms_from_many_directions():
+    grid = lateral_grid()
+    er = early_reflections(grid, SR // 10, SR)
+    assert (er**2).sum(axis=1).mean() == pytest.approx(1.0, rel=1e-6)
+    first = min(ms for *_, ms in EARLY_REFLECTIONS)
+    assert np.abs(er[:, : int(first * SR / 1000) - 1]).max() == 0.0  # 5 ms 之前完全安静
+    energy = (er**2).cumsum(axis=1).sum(axis=0)
+    assert energy[int(0.026 * SR)] / energy[-1] > 0.95  # 能量基本都在 25 ms 以内（高通尾巴除外）
+    left, right = (er[0] ** 2).sum(), (er[1] ** 2).sum()
+    assert 0.5 < left / right < 2.0  # 左右两侧都有反射
+    assert np.corrcoef(er[0], er[1])[0, 1] < 0.9  # 两耳不是同一个信号：带来空间感
 
 
 def test_brir_tails_are_independent_per_direction():

@@ -1,4 +1,5 @@
-"""母带处理（SPEC §5.4）：HRTF 平均音色补偿 EQ、自动总增益、前视真峰值限幅。"""
+"""母带处理（SPEC §5.4、§13.6）：HRTF 平均音色补偿 EQ（可叠加按场景的频带校正）、
+自动总增益、前视真峰值限幅。"""
 
 import numpy as np
 import pyloudnorm as pyln
@@ -14,15 +15,15 @@ EQ_REF_BAND_HZ = (200.0, 800.0)
 THIRD_OCTAVE_HALF = 2 ** (1 / 6)
 TARGET_LUFS = -9.0
 CEILING_DBTP = -1.0
-LIMIT_ALLOW_DB = 2.0  # 只允许约 2% 的 30 ms 片段被压超过 2 dB
-LIMIT_PERCENTILE = 98.0
+LIMIT_ALLOW_DB = 1.0  # 只允许约 1% 的 30 ms 片段被压超过 1 dB（保住动态，代价是整体略小声）
+LIMIT_PERCENTILE = 99.0
 LIMITER_WINDOW_S = 0.03
 OVERSAMPLE = 4
 EPS = 1e-12
 
 
-def diffuse_eq(grid: HrtfGrid) -> np.ndarray:
-    """水平一圈 HRTF 平均功率谱的倒数（1/3 倍频程平滑、限幅 ±6 dB）→ 线性相位 FIR。"""
+def diffuse_gain_db(grid: HrtfGrid) -> tuple[np.ndarray, np.ndarray]:
+    """(频点, 增益 dB)：水平一圈 HRTF 平均功率谱的倒数，1/3 倍频程平滑、限幅 ±6 dB。"""
     row = int(np.argmin(np.abs(grid.el_nodes)))
     spec = np.fft.rfft(grid.data[row].astype(np.float64), EQ_NFFT, axis=-1)
     power = (np.abs(spec) ** 2).mean(axis=(0, 1))
@@ -32,8 +33,23 @@ def diffuse_eq(grid: HrtfGrid) -> np.ndarray:
     hi = np.maximum(np.searchsorted(freqs, freqs * THIRD_OCTAVE_HALF, side="right"), lo + 1)
     smooth = (cum[hi] - cum[lo]) / (hi - lo)
     ref = smooth[(freqs >= EQ_REF_BAND_HZ[0]) & (freqs <= EQ_REF_BAND_HZ[1])].mean()
-    gain_db = np.clip(-10 * np.log10(smooth / ref), -EQ_LIMIT_DB, EQ_LIMIT_DB)
-    return firwin2(EQ_TAPS, freqs / (grid.sample_rate / 2), 10 ** (gain_db / 20))
+    return freqs, np.clip(-10 * np.log10(smooth / ref), -EQ_LIMIT_DB, EQ_LIMIT_DB)
+
+
+def design_eq(freqs: np.ndarray, gain_db: np.ndarray, sr: int) -> np.ndarray:
+    """任意增益曲线 → 线性相位 FIR（EQ_TAPS 抽头）。"""
+    return firwin2(EQ_TAPS, freqs / (sr / 2), 10 ** (gain_db / 20))
+
+
+def diffuse_eq(grid: HrtfGrid) -> np.ndarray:
+    return design_eq(*diffuse_gain_db(grid), grid.sample_rate)
+
+
+def with_band_gains(
+    freqs: np.ndarray, base_db: np.ndarray, bands_hz: np.ndarray, band_db: np.ndarray
+) -> np.ndarray:
+    """在基础曲线上叠加按频带给的增益（对数频率线性插值，频带范围外沿用两端的值）。"""
+    return base_db + np.interp(np.log2(np.maximum(freqs, 1.0)), np.log2(bands_hz), band_db)
 
 
 def apply_eq(x: np.ndarray, fir: np.ndarray) -> np.ndarray:
@@ -49,7 +65,7 @@ def true_peak(x: np.ndarray) -> np.ndarray:
 
 
 def master_gain(x: np.ndarray, sr: int) -> float:
-    """取较小者：到目标响度的增益 / 让 98% 的 30 ms 片段被压不超过 2 dB 的增益。"""
+    """取较小者：到目标响度的增益 / 让 99% 的 30 ms 片段被压不超过 1 dB 的增益。"""
     w = int(LIMITER_WINDOW_S * sr)
     peak = true_peak(x)
     blocks = peak[: len(peak) // w * w].reshape(-1, w).max(axis=1)
