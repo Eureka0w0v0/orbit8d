@@ -1,4 +1,5 @@
 """轨道公式：用几何上显然的点做断言（SPEC §4）。"""
+
 import numpy as np
 import pytest
 
@@ -9,8 +10,18 @@ T = 8.0
 
 def params(**kw) -> OrbitParams:
     base = dict(
-        shape="circle", radius_m=1.2, period_s=T, direction=1, start_deg=0.0, height_deg=0.0,
-        pitch_deg=0.0, roll_deg=0.0, yaw_deg=0.0, aspect=0.6, swing_deg=120.0, lift_deg=30.0,
+        shape="circle",
+        radius_m=1.2,
+        period_s=T,
+        direction=1,
+        start_deg=0.0,
+        height_deg=0.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        yaw_deg=0.0,
+        aspect=0.6,
+        swing_deg=120.0,
+        lift_deg=30.0,
     )
     base.update(kw)
     return OrbitParams(**base)
@@ -102,7 +113,9 @@ def test_vectorized_over_time():
     assert ang_diff(az, np.linspace(0, 360, 9)).max() < 1e-9
 
 
-@pytest.mark.parametrize(("bpm", "expected"), [(180, 90), (90, 90), (67, 134), (45, 90), (139.9, 139.9), (140, 70)])
+@pytest.mark.parametrize(
+    ("bpm", "expected"), [(180, 90), (90, 90), (67, 134), (45, 90), (139.9, 139.9), (140, 70)]
+)
 def test_normalize_bpm(bpm, expected):
     assert normalize_bpm(bpm) == pytest.approx(expected)
 

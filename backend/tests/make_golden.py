@@ -40,11 +40,17 @@ def orbit_cases(seed: int = SEED) -> list[dict]:
             t_ref = float(rng.uniform(0, 10))
             offset = float(rng.choice([0.0, -20.0, 20.0, -45.0]))
             az, el, dist = orbit_position(p, t, t_ref, offset)
-            cases.append({
-                "params": p.__dict__,
-                "t": t.tolist(), "t_ref": t_ref, "offset_deg": offset,
-                "az": az.tolist(), "el": el.tolist(), "dist": dist.tolist(),
-            })
+            cases.append(
+                {
+                    "params": p.__dict__,
+                    "t": t.tolist(),
+                    "t_ref": t_ref,
+                    "offset_deg": offset,
+                    "az": az.tolist(),
+                    "el": el.tolist(),
+                    "dist": dist.tolist(),
+                }
+            )
     return cases
 
 

@@ -1,4 +1,5 @@
 """HRTF 网格：插值、二进制格式、真实 KU100 数据的物理合理性（SPEC §5.6）。"""
+
 import numpy as np
 import pytest
 from scipy.signal import resample_poly
@@ -15,8 +16,9 @@ needs_sofa = pytest.mark.skipif(not SOFA.exists(), reason="需要先运行 make 
 def synthetic_grid(seed: int = 0) -> HrtfGrid:
     rng = np.random.default_rng(seed)
     data = rng.standard_normal((5, 8, 2, 4)).astype(np.float32)
-    return HrtfGrid(sample_rate=SR, az_step_deg=45.0, el_nodes=np.array([-60.0, -30.0, 0.0, 30.0, 60.0]),
-                    data=data)
+    return HrtfGrid(
+        sample_rate=SR, az_step_deg=45.0, el_nodes=np.array([-60.0, -30.0, 0.0, 30.0, 60.0]), data=data
+    )
 
 
 def test_interpolation_is_exact_on_grid_points():
@@ -83,7 +85,7 @@ def test_ku100_right_side_delays_left_ear(ku100):
     ir = interpolate(ku100, np.array([90.0]), np.array([0.0]))[0]
     itd = onset_ms(ir[0]) - onset_ms(ir[1])
     assert 0.62 <= itd <= 0.70
-    assert (ir[1] ** 2).sum() > 4 * (ir[0] ** 2).sum()          # 右耳明显更响
+    assert (ir[1] ** 2).sum() > 4 * (ir[0] ** 2).sum()  # 右耳明显更响
 
 
 @needs_sofa

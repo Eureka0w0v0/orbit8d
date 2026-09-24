@@ -13,8 +13,8 @@ from scipy.signal import butter, lfilter, oaconvolve
 from orbit8d.engine.hrtf import HrtfGrid, blend, interp_weights
 
 BLOCK = 32
-NFFT = 160                    # BLOCK 的整数倍，且 ≥ BLOCK + taps - 1
-CHUNK_BLOCKS = 16384          # 分批处理，限制内存
+NFFT = 160  # BLOCK 的整数倍，且 ≥ BLOCK + taps - 1
+CHUNK_BLOCKS = 16384  # 分批处理，限制内存
 REAR_SHELF_HZ = 3000.0
 MIN_DISTANCE_M = 0.5
 MAX_DISTANCE_M = 4.0
@@ -24,6 +24,7 @@ REF_DISTANCE_M = 1.0
 @dataclass(frozen=True)
 class BlockPath:
     """一个声源逐块的方向与增益（长度 = 块数）。"""
+
     az: np.ndarray
     el: np.ndarray
     gain: np.ndarray
@@ -51,7 +52,9 @@ def rear_shelf_coeffs(sr: int):
     return b, a
 
 
-def rear_shelf(x: np.ndarray, rear_blocks: np.ndarray, cut_db: float, sr: int, block: int = BLOCK) -> np.ndarray:
+def rear_shelf(
+    x: np.ndarray, rear_blocks: np.ndarray, cut_db: float, sr: int, block: int = BLOCK
+) -> np.ndarray:
     """x - r·cut·hp(x)：r 逐块恒定，cut = 1 - 10^(-cut_db/20)。"""
     cut = 1.0 - 10.0 ** (-cut_db / 20.0)
     if cut == 0.0 or not np.any(rear_blocks):
@@ -69,8 +72,9 @@ def grid_spectra(grid: HrtfGrid, nfft: int = NFFT) -> np.ndarray:
     return np.fft.rfft(grid.data.astype(np.float64), nfft, axis=-1).astype(np.complex128)
 
 
-def render_path(x: np.ndarray, path: BlockPath, spectra: np.ndarray, grid: HrtfGrid,
-                block: int = BLOCK, nfft: int = NFFT) -> np.ndarray:
+def render_path(
+    x: np.ndarray, path: BlockPath, spectra: np.ndarray, grid: HrtfGrid, block: int = BLOCK, nfft: int = NFFT
+) -> np.ndarray:
     """单声道 x 沿 path 渲染成 (n, 2) 双耳信号。"""
     n, nb = len(x), len(path.az)
     if nb != -(-n // block):
@@ -89,7 +93,7 @@ def render_path(x: np.ndarray, path: BlockPath, spectra: np.ndarray, grid: HrtfG
             h = blend(spectra[:, :, ear], w)
             y = np.fft.irfft(spec * h, nfft, axis=1).reshape(e - s, segs, block)
             for j in range(segs):
-                out[s + j:e + j, :, ear] += y[:, j, :]
+                out[s + j : e + j, :, ear] += y[:, j, :]
     return out.reshape(-1, 2)[:n]
 
 

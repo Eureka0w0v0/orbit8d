@@ -12,7 +12,7 @@ SHAPES = ("circle", "ellipse", "pendulum", "figure8", "spiral", "fixed")
 BEATS_PER_BAR = 4
 BPM_NORM_LOW = 70.0
 BPM_NORM_HIGH = 140.0
-SPIRAL_TURNS_PER_CYCLE = 4.0     # 螺旋：每 4 圈完成一次升降
+SPIRAL_TURNS_PER_CYCLE = 4.0  # 螺旋：每 4 圈完成一次升降
 
 
 @dataclass(frozen=True)
@@ -20,7 +20,7 @@ class OrbitParams:
     shape: str
     radius_m: float
     period_s: float
-    direction: int               # +1 顺时针，-1 逆时针
+    direction: int  # +1 顺时针，-1 逆时针
     start_deg: float
     height_deg: float
     pitch_deg: float

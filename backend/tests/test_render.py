@@ -1,4 +1,5 @@
 """分块双线性 HRTF 渲染（SPEC §5.2）。"""
+
 import numpy as np
 import pytest
 
@@ -25,8 +26,12 @@ needs_sofa = pytest.mark.skipif(not SOFA.exists(), reason="需要先运行 make 
 def synthetic_grid(taps: int = 128, seed: int = 1) -> HrtfGrid:
     rng = np.random.default_rng(seed)
     data = rng.standard_normal((5, 8, 2, taps)).astype(np.float32) * np.exp(-np.arange(taps) / 20)
-    return HrtfGrid(sample_rate=SR, az_step_deg=45.0, el_nodes=np.array([-60.0, -30.0, 0.0, 30.0, 60.0]),
-                    data=data.astype(np.float32))
+    return HrtfGrid(
+        sample_rate=SR,
+        az_step_deg=45.0,
+        el_nodes=np.array([-60.0, -30.0, 0.0, 30.0, 60.0]),
+        data=data.astype(np.float32),
+    )
 
 
 def const_path(nb: int, az: float, el: float, gain: float = 1.0, rear: float = 0.0) -> BlockPath:
@@ -36,7 +41,7 @@ def const_path(nb: int, az: float, el: float, gain: float = 1.0, rear: float = 0
 def err_db(a: np.ndarray, ref: np.ndarray) -> float:
     """误差能量相对参考能量（dB）；完全相同时返回 -inf 而不是报除零警告。"""
     diff = np.sum((a - ref) ** 2)
-    return float("-inf") if diff == 0 else float(10 * np.log10(diff / np.sum(ref ** 2)))
+    return float("-inf") if diff == 0 else float(10 * np.log10(diff / np.sum(ref**2)))
 
 
 def test_block_times_are_block_centers():
@@ -97,8 +102,12 @@ def test_moving_source_is_insensitive_to_block_size():
     outs = []
     for block in (BLOCK, 16):
         t = block_times(len(x), SR, block)
-        path = BlockPath(az=360.0 * t / 6.0, el=20.0 * np.sin(2 * np.pi * t / 6.0), gain=np.ones(len(t)),
-                         rear=np.zeros(len(t)))
+        path = BlockPath(
+            az=360.0 * t / 6.0,
+            el=20.0 * np.sin(2 * np.pi * t / 6.0),
+            gain=np.ones(len(t)),
+            rear=np.zeros(len(t)),
+        )
         outs.append(render_path(x, path, grid_spectra(g, NFFT), g, block=block, nfft=NFFT))
     assert BLOCK == 32 and NFFT % 16 == 0
     assert err_db(outs[0], outs[1]) < -45

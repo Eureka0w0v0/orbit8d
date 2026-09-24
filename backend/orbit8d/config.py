@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-HOST = "127.0.0.1"          # 红线：只监听本机，不提供覆盖方式
-SAMPLE_RATE = 44100         # 内部统一采样率（Demucs 模型的采样率）
+HOST = "127.0.0.1"  # 红线：只监听本机，不提供覆盖方式
+SAMPLE_RATE = 44100  # 内部统一采样率（Demucs 模型的采样率）
 MB = 1024 * 1024
 
 

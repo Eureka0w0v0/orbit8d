@@ -22,8 +22,8 @@ AZ_TOLERANCE_DEG = 1e-3
 class HrtfGrid:
     sample_rate: int
     az_step_deg: float
-    el_nodes: np.ndarray        # (n_el,) 升序，单位度
-    data: np.ndarray            # (n_el, n_az, 2, taps) float32
+    el_nodes: np.ndarray  # (n_el,) 升序，单位度
+    data: np.ndarray  # (n_el, n_az, 2, taps) float32
 
     @property
     def n_el(self) -> int:
@@ -46,7 +46,7 @@ def _left_ear_first(receivers: np.ndarray, ir: np.ndarray) -> np.ndarray:
 
 def from_sofa(path: Path, sample_rate: int) -> HrtfGrid:
     with h5py.File(path, "r") as f:
-        ir = np.array(f["Data.IR"], dtype=np.float64)                  # (M, 2, N)
+        ir = np.array(f["Data.IR"], dtype=np.float64)  # (M, 2, N)
         fs = int(round(float(np.array(f["Data.SamplingRate"]).ravel()[0])))
         pos = np.array(f["SourcePosition"], dtype=np.float64)
         receivers = np.array(f["ReceiverPosition"], dtype=np.float64)
@@ -68,13 +68,20 @@ def from_sofa(path: Path, sample_rate: int) -> HrtfGrid:
 
     g = np.gcd(sample_rate, fs)
     grid = resample_poly(grid, sample_rate // g, fs // g, axis=-1)
-    grid = grid[..., :TAPS] if grid.shape[-1] >= TAPS else np.pad(
-        grid, [(0, 0)] * 3 + [(0, TAPS - grid.shape[-1])])
+    grid = (
+        grid[..., :TAPS]
+        if grid.shape[-1] >= TAPS
+        else np.pad(grid, [(0, 0)] * 3 + [(0, TAPS - grid.shape[-1])])
+    )
 
     row = int(np.argmin(np.abs(el_nodes)))
-    grid /= np.sqrt((grid[row] ** 2).sum(-1).mean())                    # 水平一圈平均每耳能量 = 1
-    return HrtfGrid(sample_rate=sample_rate, az_step_deg=step, el_nodes=el_nodes.astype(np.float64),
-                    data=grid.astype(np.float32))
+    grid /= np.sqrt((grid[row] ** 2).sum(-1).mean())  # 水平一圈平均每耳能量 = 1
+    return HrtfGrid(
+        sample_rate=sample_rate,
+        az_step_deg=step,
+        el_nodes=el_nodes.astype(np.float64),
+        data=grid.astype(np.float32),
+    )
 
 
 def interp_weights(grid: HrtfGrid, az: np.ndarray, el: np.ndarray):
@@ -98,8 +105,12 @@ def blend(table: np.ndarray, weights) -> np.ndarray:
     i0, i1, j0, j1, t_el, t_az = weights
     shape = (-1,) + (1,) * (table.ndim - 2)
     te, ta = t_el.reshape(shape), t_az.reshape(shape)
-    return ((1 - te) * (1 - ta) * table[i0, j0] + (1 - te) * ta * table[i0, j1]
-            + te * (1 - ta) * table[i1, j0] + te * ta * table[i1, j1])
+    return (
+        (1 - te) * (1 - ta) * table[i0, j0]
+        + (1 - te) * ta * table[i0, j1]
+        + te * (1 - ta) * table[i1, j0]
+        + te * ta * table[i1, j1]
+    )
 
 
 def interpolate(grid: HrtfGrid, az, el) -> np.ndarray:
@@ -108,12 +119,18 @@ def interpolate(grid: HrtfGrid, az, el) -> np.ndarray:
 
 
 def to_bytes(grid: HrtfGrid) -> bytes:
-    header = json.dumps({
-        "version": FORMAT_VERSION, "sample_rate": grid.sample_rate, "taps": grid.taps,
-        "az_step_deg": grid.az_step_deg, "n_az": grid.n_az, "el_nodes": grid.el_nodes.tolist(),
-        "layout": "el,az,ear,tap",
-    }).encode()
-    pad = (-len(header)) % 4                                              # 数据段 4 字节对齐
+    header = json.dumps(
+        {
+            "version": FORMAT_VERSION,
+            "sample_rate": grid.sample_rate,
+            "taps": grid.taps,
+            "az_step_deg": grid.az_step_deg,
+            "n_az": grid.n_az,
+            "el_nodes": grid.el_nodes.tolist(),
+            "layout": "el,az,ear,tap",
+        }
+    ).encode()
+    pad = (-len(header)) % 4  # 数据段 4 字节对齐
     header += b" " * pad
     return MAGIC + struct.pack("<I", len(header)) + header + grid.data.astype("<f4").tobytes()
 
@@ -122,13 +139,17 @@ def from_bytes(blob: bytes) -> HrtfGrid:
     if blob[:4] != MAGIC:
         raise ValueError("不是 Orbit 8D 的 HRTF 数据")
     (hlen,) = struct.unpack("<I", blob[4:8])
-    meta = json.loads(blob[8:8 + hlen])
+    meta = json.loads(blob[8 : 8 + hlen])
     if meta.get("version") != FORMAT_VERSION:
         raise ValueError(f"不支持的 HRTF 数据版本: {meta.get('version')}")
     nodes = np.array(meta["el_nodes"], dtype=np.float64)
-    data = np.frombuffer(blob[8 + hlen:], dtype="<f4").reshape(len(nodes), meta["n_az"], 2, meta["taps"])
-    return HrtfGrid(sample_rate=meta["sample_rate"], az_step_deg=meta["az_step_deg"], el_nodes=nodes,
-                    data=data.astype(np.float32))
+    data = np.frombuffer(blob[8 + hlen :], dtype="<f4").reshape(len(nodes), meta["n_az"], 2, meta["taps"])
+    return HrtfGrid(
+        sample_rate=meta["sample_rate"],
+        az_step_deg=meta["az_step_deg"],
+        el_nodes=nodes,
+        data=data.astype(np.float32),
+    )
 
 
 def load_grid(sofa_path: Path, cache_dir: Path, sample_rate: int) -> HrtfGrid:
