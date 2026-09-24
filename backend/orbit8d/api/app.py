@@ -120,6 +120,10 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     def health() -> dict:
         return {"ok": True, "version": __version__, "formats": available_formats()}
 
+    @app.get("/api/presets")
+    def list_presets() -> list[str]:
+        return list(PRESETS)
+
     @app.get("/api/presets/{name}")
     def get_preset(name: str, bars: int = 4) -> dict:
         if name not in PRESETS:

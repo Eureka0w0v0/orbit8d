@@ -20,6 +20,7 @@ export const PRESET_LABEL: Record<string, string> = {
   singer: "歌手绕着你转",
   dual: "双环反向",
   tumble: "上下翻滚",
+  single: "单点环绕（视频同款）",
 };
 
 export const PROJECT_STATE_LABEL: Record<ProjectState, string> = {
@@ -93,5 +94,7 @@ export const TEXT = {
   solo: "独奏",
   dragHint: "拖动左侧白点改距离，拖正前 / 右侧圆环改倾斜；暂停时可以拖小球改起点",
   resetView: "重置视角",
+  layer: "所在层",
+  showDome: "显示三层半球网格",
   credits: "人头模型：Infinite, 3D Head Scan by Lee Perry-Smith（CC BY 3.0）· HRTF：TH Köln Neumann KU100",
 } as const;

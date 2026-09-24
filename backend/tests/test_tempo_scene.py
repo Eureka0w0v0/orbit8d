@@ -98,7 +98,8 @@ def test_canonical_json_is_order_independent():
     assert canonical_json(a) == canonical_json(Scene.model_validate(shuffled))
 
 
-@pytest.mark.parametrize("name", PRESETS)
+# "single" 故意固定 12 秒一圈（参考视频实测值），不跟随小节；由下方专门的测试覆盖
+@pytest.mark.parametrize("name", [p for p in PRESETS if p != "single"])
 def test_presets_are_valid_and_use_default_bars(name):
     scene = preset(name, default_bars=2)
     assert isinstance(scene, Scene)
@@ -129,3 +130,18 @@ def test_orbit_params_converts_units():
     o.speed.mode, o.speed.bars = "bars", 2
     p = orbit_params(o, bpm_norm=90.0)
     assert p.direction == -1 and p.period_s == pytest.approx(16 / 3)
+
+
+def test_height_reaches_top_layer():
+    scene = Scene()
+    scene.tracks["vocals"].orbit.height_deg = 90.0
+    assert scene.tracks["vocals"].orbit.height_deg == 90.0
+    with pytest.raises(ValidationError):
+        scene.tracks["vocals"].orbit.height_deg = 91.0
+
+
+def test_single_point_preset_imitates_reference_video():
+    scene = preset("single", default_bars=4)
+    for track in scene.tracks.values():
+        assert track.orbit.shape == "circle" and track.width_deg == 0.0
+        assert track.orbit.speed.mode == "seconds" and track.orbit.speed.seconds == 12.0

@@ -219,3 +219,8 @@ def test_scene_schema_exposes_parameter_ranges(client):
     schema = client.get("/api/scene/schema").json()
     radius = schema["$defs"]["Orbit"]["properties"]["radius_m"]
     assert radius["minimum"] == 0.5 and radius["maximum"] == 4.0
+
+
+def test_presets_list_endpoint(client):
+    names = client.get("/api/presets").json()
+    assert names == ["classic", "singer", "dual", "tumble", "single"]

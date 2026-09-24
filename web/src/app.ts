@@ -4,6 +4,7 @@ import { ApiError, api, poll } from "./api";
 import { AudioEngine, STEM_NAMES } from "./audio/engine";
 import { buildRenderParams, effectiveTrackGains } from "./audio/params";
 import { toOrbitParams, type OrbitParams } from "./orbit/orbit";
+import { Dome } from "./scene/dome";
 import { Handles } from "./scene/handles";
 import { loadHead } from "./scene/head";
 import { visualRadius } from "./scene/mapping";
@@ -30,9 +31,9 @@ const PHASE_TRANSITIONS: Record<Phase, readonly Phase[]> = {
   error: ["uploading", "empty"],
 };
 
-const PRESETS = ["classic", "singer", "dual", "tumble"] as const;
 const DEFAULT_PRESET = "classic";
 const LAST_PROJECT_KEY = "orbit8d.lastProject";
+const DOME_KEY = "orbit8d.showDome";
 const TOAST_MS = 4000;
 const STAGE_SPAN: Partial<Record<Project["state"], [number, number]>> = {
   UPLOADED: [0, 0.02],
@@ -66,6 +67,7 @@ export class App {
   private readonly brirCache = new Map<RoomName, ArrayBuffer>();
   private loadedRoom: RoomName | null = null;
   private readonly views = new Map<TrackName, OrbitView>();
+  private readonly dome = new Dome();
   private readonly engine = new AudioEngine();
   private stage!: Stage;
   private handles!: Handles;
@@ -97,14 +99,22 @@ export class App {
 
     try {
       this.stage = new Stage(viewport, visualRadius);
-      const [health, schema, hrtf, eq, head] = await Promise.all([api.health(), api.schema(), api.hrtf(), api.eq(), loadHead()]);
+      const [health, schema, presets, hrtf, eq, head] = await Promise.all([
+        api.health(),
+        api.schema(),
+        api.presets(),
+        api.hrtf(),
+        api.eq(),
+        loadHead(),
+      ]);
       this.formats = health.formats;
-      this.stage.scene.add(head);
+      this.stage.scene.add(head, this.dome.group);
+      this.dome.visible = storage()?.getItem(DOME_KEY) !== "0";
       await this.engine.init(hrtf, eq);
       this.engine.onEnded = () => this.transport.update(this.engine.time, this.engine.duration, false);
       const ranges = SchemaRanges.from(schema);
       const actions = this.panelActions();
-      this.tracksPanel = new TracksPanel(actions, ranges, PRESETS);
+      this.tracksPanel = new TracksPanel(actions, ranges, presets);
       this.orbitPanel = new OrbitPanel(actions, ranges);
       root.append(this.tracksPanel.el, this.orbitPanel.el);
       for (const track of TRACKS) {
@@ -239,6 +249,11 @@ export class App {
       setRearDarken: (db) => this.mutate((s) => (s.rear_darken_db = db)),
       applyPreset: (name) => void this.applyPreset(name),
       resetView: () => this.stage.resetView(),
+      domeVisible: () => this.dome.visible,
+      toggleDome: (visible) => {
+        this.dome.visible = visible;
+        storage()?.setItem(DOME_KEY, visible ? "1" : "0");
+      },
     };
   }
 
@@ -280,6 +295,7 @@ export class App {
         selected: track === this.selected,
       });
     }
+    this.dome.setRadius(visualRadius(scene.tracks[this.selected].orbit.radius_m));
     this.tracksPanel.sync(scene, this.selected);
     this.orbitPanel.sync(scene, this.selected, analysis);
     this.paramsDirty = true;

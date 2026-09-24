@@ -2,10 +2,11 @@
 
 import { effectiveTrackGains } from "../audio/params";
 import { BEATS_PER_BAR } from "../orbit/orbit";
+import { LAYERS, layerOf } from "../scene/layers";
 import { TRACK_COLORS } from "../scene/orbits";
 import type { Analysis, Bars, Orbit, Room, RoomName, Scene, Shape, Speed, Track, TrackName } from "../types";
 import { TRACKS } from "../types";
-import { Slider, fmt, h, segmented } from "./dom";
+import { Slider, fmt, h, segmented, setSegmented } from "./dom";
 import { PARAM_LABEL, PRESET_LABEL, ROOM_LABEL, SHAPE_LABEL, TEXT, TRACK_LABEL } from "./labels";
 import type { SchemaRanges } from "./schema";
 
@@ -25,6 +26,8 @@ export interface PanelActions {
   setRearDarken(db: number): void;
   applyPreset(name: string): void;
   resetView(): void;
+  domeVisible(): boolean;
+  toggleDome(visible: boolean): void;
 }
 
 interface TrackRow {
@@ -92,6 +95,7 @@ export class OrbitPanel {
   private readonly body: HTMLDivElement;
   private builtKey = "";
   private sliders: Array<{ slider: Slider; read: (s: Scene) => number }> = [];
+  private layerBox: HTMLDivElement | null = null;
 
   constructor(private readonly actions: PanelActions, private readonly ranges: SchemaRanges) {
     this.body = h("div", { class: "orbit-body" });
@@ -107,6 +111,7 @@ export class OrbitPanel {
       return;
     }
     for (const { slider, read } of this.sliders) slider.set(read(scene));
+    if (this.layerBox) setSegmented(this.layerBox, layerOf(o.height_deg));
   }
 
   private slider(
@@ -122,6 +127,12 @@ export class OrbitPanel {
     const slider = new Slider({ label, ...this.ranges.of(def, prop), step, value: read(scene), format, onInput });
     this.sliders.push({ slider, read });
     return slider.el;
+  }
+
+  private domeToggle(): HTMLLabelElement {
+    const box = h("input", { type: "checkbox", checked: this.actions.domeVisible() });
+    box.addEventListener("change", () => this.actions.toggleDome(box.checked));
+    return h("label", { class: "toggle" }, box, h("span", {}, TEXT.showDome));
   }
 
   private build(scene: Scene, track: TrackName, analysis: Analysis): void {
@@ -141,7 +152,14 @@ export class OrbitPanel {
     );
     const shape = segmented(SHAPES.map((s) => ({ value: s, label: SHAPE_LABEL[s] })), o.shape, (s) => setO({ shape: s }), "grid3");
 
+    this.layerBox = segmented(
+      LAYERS.map((l) => ({ value: l.name, label: l.label })),
+      layerOf(o.height_deg) ?? "",
+      (name) => setO({ height_deg: LAYERS.find((l) => l.name === name)!.center }),
+    );
     const geometry: HTMLElement[] = [
+      h("div", { class: "field-label" }, TEXT.layer),
+      this.layerBox,
       this.slider(PARAM_LABEL.radius_m, "Orbit", "radius_m", 0.05, fmt.meters, (s) => orbit(s).radius_m, scene, (v) => setO({ radius_m: v })),
       this.slider(PARAM_LABEL.start_deg, "Orbit", "start_deg", 1, fmt.deg, (s) => orbit(s).start_deg, scene, (v) => setO({ start_deg: v })),
       this.slider(PARAM_LABEL.height_deg, "Orbit", "height_deg", 1, fmt.deg, (s) => orbit(s).height_deg, scene, (v) => setO({ height_deg: v })),
@@ -196,6 +214,7 @@ export class OrbitPanel {
       segmented(ROOMS.map((r) => ({ value: r, label: ROOM_LABEL[r] })), scene.room.name, (r) => a.setRoom({ name: r })),
       this.slider(PARAM_LABEL.wet_db, "Room", "wet_db", 0.5, fmt.db, (s) => s.room.wet_db, scene, (v) => a.setRoom({ wet_db: v })),
       this.slider(PARAM_LABEL.rear_darken_db, null, "rear_darken_db", 0.5, fmt.db, (s) => s.rear_darken_db, scene, (v) => a.setRearDarken(v)),
+      this.domeToggle(),
     ];
 
     const sections: HTMLElement[] = [title, shape, h("div", { class: "group" }, ...geometry)];

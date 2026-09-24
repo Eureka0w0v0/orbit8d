@@ -34,6 +34,7 @@ async function getBytes(url: string): Promise<ArrayBuffer> {
 export const api = {
   health: () => getJson<{ ok: boolean; version: string; formats: ExportFormat[] }>("/api/health"),
   schema: () => getJson<Record<string, unknown>>("/api/scene/schema"),
+  presets: () => getJson<string[]>("/api/presets"),
   preset: (name: string, bars: Bars) => getJson<Scene>(`/api/presets/${name}?bars=${bars}`),
   project: (id: string) => getJson<Project>(`/api/projects/${id}`),
   stem: (id: string, name: string) => getBytes(`/api/projects/${id}/stems/${name}.flac`),

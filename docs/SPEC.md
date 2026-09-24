@@ -20,7 +20,7 @@
 1. 拖入音乐 → 解码 → 分轨（约 0.3× 时长，GPU）→ 分析（测速、校准）→ 就绪。同一文件再次导入按内容哈希直接复用。
 2. 3D 场景：白色石膏人头 + 每条音轨一个彩色轨道环 + 发光声源小球，播放时小球沿轨道跑、声音同步移动。
 3. 拖拽：环上的半径把手（改半径）、倾斜把手（前后/左右倾斜）、声源小球（暂停时改起点）；右侧面板改形状与参数。
-4. 预设：经典 8D / 歌手绕着你转 / 双环反向 / 上下翻滚。
+4. 预设：经典 8D / 歌手绕着你转 / 双环反向 / 上下翻滚 / 单点环绕（参考视频同款：所有音轨同一点、固定 12 秒一圈、混响 −10 dB；其余预设跟随歌曲小节）。
 5. 导出：选格式 → 后台渲染 → 下载 `<原歌名> (8D).<扩展名>`。
 
 ## 3. 架构
@@ -83,7 +83,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | speed | {mode: bars, bars ∈ {1,2,4,8}} 或 {mode: seconds, seconds ∈ [2,30]} | 分析给出的默认小节数 |
 | direction | cw / ccw | cw |
 | start_deg | −360–360 | 0 |
-| height_deg | −60–60 | 0 |
+| height_deg | −60–90（90 = 正头顶） | 0 |
 | pitch_deg / roll_deg | −90–90 | 0 |
 | yaw_deg | −180–180 | 0 |
 | aspect | 0.3–1 | 0.6 |
@@ -178,6 +178,9 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | /api/health | 版本、可用输出格式 |
+| GET | /api/presets | 预设名列表（前端据此生成按钮） |
+| GET | /api/presets/{name}?bars=N | 预设场景 |
+| GET | /api/scene/schema | 场景参数表（前端滑杆范围的唯一来源） |
 | POST | /api/projects | 请求体为文件原始字节（`Content-Type: application/octet-stream`），原文件名放在 `X-Filename` 头（URL 编码，仅用于显示）；边收边写临时文件，>300 MB 立即中止（413）；ffprobe 校验格式白名单与时长 ≤ 20 分钟；项目 ID = 内容 sha256 前 16 位（重复上传直接返回，失败过的会重试） |
 | GET | /api/projects/{id} | 状态、阶段进度、BPM、时长、默认小节数、t_ref、校准增益、试听总增益 |
 | GET | /api/projects/{id}/stems/{vocals_hi,bass_hi,drums_hi,other_hi,bass_sub,drums_sub,other_sub}.flac | 试听用 24-bit FLAC（drums_hi/other_hi 为立体声） |
@@ -234,6 +237,9 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 - 距离可视化：`visual = 0.32 · √(d / 0.5)`（d ∈ [0.5, 4] m），地面同心圈对应 0.5 / 1 / 2 / 4 m。
 - 把手：轨道相位 270°（左侧）= 距离，0°（正前）= 前后倾斜，90°（右侧）= 左右倾斜；暂停时拖小球改起点（仅圆 / 椭圆 / 螺旋 / 固定，相位可由位置反推）。
 - 辉光阈值 1.4：只有发光小球泛光，白模不泛光。
+
+- 三层半球网格（参考杜比全景声示意图，`src/scene/layers.ts`、`dome.ts`）：环绕层 [−15°, 15°]（蓝）、高度层 (15°, 60°]（橙）、顶层 (60°, 90°]（红），含纬线、每 30° 经线与角度标注；按选中音轨的可视半径缩放，使其轨道贴在球面上；可在“空间”一栏关闭（记在 localStorage）。
+- “所在层”按钮：一键把选中音轨的高度设为该层中心（0° / 35° / 75°），高亮随高度变化同步，不重建面板。
 
 ### 10.3 试听引擎
 9 声道缓冲（vocals_hi, bass_hi, drums_hi L/R, other_hi L/R, bass_sub, drums_sub, other_sub）→ AudioWorklet（输出 0 = 双耳干声，输出 1 = 混响送出）→ BRIR 卷积 × wet → 补偿 EQ 卷积 → 试听总增益 → DynamicsCompressor 兜底 → 输出；并联两路 AnalyserNode 驱动左右电平表。ConvolverNode 一律 `normalize = false`。

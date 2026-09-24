@@ -70,7 +70,7 @@ export function segmented<T extends string | number>(
 ): HTMLDivElement {
   const box = h("div", { class: `segmented ${extraClass}` });
   for (const opt of options) {
-    const btn = h("button", { type: "button", class: opt.value === current ? "on" : "" }, opt.label);
+    const btn = h("button", { type: "button", class: opt.value === current ? "on" : "", "data-value": String(opt.value) }, opt.label);
     btn.addEventListener("click", () => {
       for (const b of box.querySelectorAll("button")) b.classList.remove("on");
       btn.classList.add("on");
@@ -79,6 +79,13 @@ export function segmented<T extends string | number>(
     box.append(btn);
   }
   return box;
+}
+
+/** 从外部同步分段按钮的高亮（不重建 DOM，避免打断正在进行的拖动）。value 为 null 时全部取消高亮。 */
+export function setSegmented(box: HTMLElement, value: string | number | null): void {
+  for (const b of box.querySelectorAll<HTMLButtonElement>("button")) {
+    b.classList.toggle("on", value !== null && b.dataset.value === String(value));
+  }
 }
 
 export const fmt = {

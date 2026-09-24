@@ -9,10 +9,12 @@ from orbit8d.engine.orbit import OrbitParams, period_seconds
 
 TRACKS = ("vocals", "drums", "bass", "other")
 TrackName = Literal["vocals", "drums", "bass", "other"]
-PRESETS = ("classic", "singer", "dual", "tumble")
+PRESETS = ("classic", "singer", "dual", "tumble", "single")
 DEFAULT_WIDTH = {"vocals": 0.0, "drums": 40.0, "bass": 0.0, "other": 40.0}
 DEFAULT_SEND = {"vocals": 1.0, "drums": 0.4, "bass": 0.0, "other": 0.7}
 MAX_BARS = 8
+SINGLE_TURN_S = 12.0  # 参考视频实测：约 12 秒一圈
+SINGLE_WET_DB = -10.0
 
 _STRICT = ConfigDict(extra="forbid", allow_inf_nan=False, validate_assignment=True)
 
@@ -31,7 +33,7 @@ class Orbit(BaseModel):
     speed: Speed = Field(default_factory=Speed)
     direction: Literal["cw", "ccw"] = "cw"
     start_deg: float = Field(0.0, ge=-360.0, le=360.0)
-    height_deg: float = Field(0.0, ge=-60.0, le=60.0)
+    height_deg: float = Field(0.0, ge=-60.0, le=90.0)  # 上限 90°：可以放到顶层（正头顶）
     pitch_deg: float = Field(0.0, ge=-90.0, le=90.0)
     roll_deg: float = Field(0.0, ge=-90.0, le=90.0)
     yaw_deg: float = Field(0.0, ge=-180.0, le=180.0)
@@ -110,7 +112,7 @@ def orbit_params(orbit: Orbit, bpm_norm: float) -> OrbitParams:
 
 
 def preset(name: str, default_bars: int) -> Scene:
-    """四个预设：经典 8D / 歌手绕着你转 / 双环反向 / 上下翻滚。"""
+    """预设：经典 8D / 歌手绕着你转 / 双环反向 / 上下翻滚 / 单点环绕（参考视频同款：整首歌一个点声源）。"""
     if name not in PRESETS:
         raise ValueError(f"未知预设: {name}")
     scene = Scene()
@@ -129,4 +131,9 @@ def preset(name: str, default_bars: int) -> Scene:
         for anchored in ("drums", "bass"):
             t[anchored].orbit.shape = "fixed"
         t["drums"].width_deg = 60.0
+    elif name == "single":
+        for track in t.values():
+            track.width_deg = 0.0
+            track.orbit.speed = Speed(mode="seconds", seconds=SINGLE_TURN_S)
+        scene.room.wet_db = SINGLE_WET_DB
     return scene
