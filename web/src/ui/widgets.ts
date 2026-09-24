@@ -1,5 +1,6 @@
 // 播放条、导入/进度弹层、导出对话框。
 
+import type { ListenMode } from "../audio/engine";
 import type { ExportFormat } from "../types";
 import { fmt, h } from "./dom";
 import { FORMAT_LABEL, TEXT } from "./labels";
@@ -10,20 +11,23 @@ const ACCEPT = "audio/*,.mp3,.m4a,.aac,.flac,.wav,.aiff,.aif,.ogg,.opus";
 export class Transport {
   readonly el: HTMLElement;
   private readonly play: HTMLButtonElement;
+  private readonly listen: HTMLButtonElement;
   private readonly time: HTMLSpanElement;
   private readonly info: HTMLSpanElement;
   private readonly meterBars: [HTMLDivElement, HTMLDivElement];
   private readonly meter: HTMLDivElement;
 
-  /** timeline：代替进度条的时间轴（段落 + 事件 + 播放头）。 */
-  constructor(onToggle: () => void, timeline: HTMLElement) {
+  /** timeline：代替进度条的时间轴（段落 + 事件 + 播放头）；onListen：切换 8D / 原曲。 */
+  constructor(onToggle: () => void, timeline: HTMLElement, onListen: () => void) {
     this.play = h("button", { type: "button", class: "play", title: `${TEXT.play}（空格）` }, "▶");
     this.play.addEventListener("click", onToggle);
+    this.listen = h("button", { type: "button", class: "listen", title: TEXT.listenTitle }, TEXT.listen8d);
+    this.listen.addEventListener("click", onListen);
     this.time = h("span", { class: "time" }, "0:00 / 0:00");
     this.info = h("span", { class: "info" });
     this.meterBars = [h("div", { class: "lvl" }), h("div", { class: "lvl" })];
     this.meter = h("div", { class: "meter", title: "左 / 右耳电平" }, h("span", {}, "L"), h("div", { class: "track" }, this.meterBars[0]), h("span", {}, "R"), h("div", { class: "track" }, this.meterBars[1]));
-    this.el = h("footer", { class: "transport" }, this.play, this.time, timeline, this.info, this.meter, h("span", { class: "phones" }, `🎧 ${TEXT.headphones}`));
+    this.el = h("footer", { class: "transport" }, this.play, this.listen, this.time, timeline, this.info, this.meter, h("span", { class: "phones" }, `🎧 ${TEXT.headphones}`));
   }
 
   update(t: number, duration: number, playing: boolean): void {
@@ -39,6 +43,12 @@ export class Transport {
       this.meterBars[i].style.width = `${Math.round(fraction * 100)}%`;
       this.meterBars[i].dataset.db = db.toFixed(1);
     });
+  }
+
+  setListen(mode: ListenMode, available: boolean): void {
+    this.listen.textContent = mode === "original" ? TEXT.listenOriginal : TEXT.listen8d;
+    this.listen.classList.toggle("original", mode === "original");
+    this.listen.disabled = !available;
   }
 
   setInfo(text: string): void {

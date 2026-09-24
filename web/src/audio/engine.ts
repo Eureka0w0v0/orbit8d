@@ -1,5 +1,6 @@
 // 试听音频引擎：9 声道缓冲 → AudioWorklet（双耳 + 已乘分段混响量的送出信号）→ BRIR 卷积（混响）
 // → 按场景的补偿 EQ（两个卷积器交叉淡化切换，换 EQ 不爆音）→ 试听总增益 → 兜底限幅。
+// 原曲（A/B 对比）与 8D 同时播放、采样级同步，只是其中一路音量为 0；切换时 40 ms 交叉淡化。
 
 import workletUrl from "./worklet.ts?worker&url";
 import { parseHrtf } from "./hrtf";
@@ -11,6 +12,9 @@ const PROCESSOR_NAME = "orbit8d-binaural";
 const START_LATENCY_S = 0.06;
 const PARAM_RAMP_S = 0.05;
 const EQ_FADE_S = 0.08;
+const AB_FADE_S = 0.04;
+
+export type ListenMode = "8d" | "original";
 const LIMITER = { threshold: -1, knee: 0, ratio: 20, attack: 0.001, release: 0.1 };
 const METER_FFT = 2048;
 const METER_FLOOR_DB = -90;
@@ -39,6 +43,12 @@ export class AudioEngine {
   private eqChain: Promise<void> = Promise.resolve();
   private hasEq = false;
   private readonly master: GainNode;
+  private readonly path8d: GainNode;
+  private readonly pathOriginal: GainNode;
+  private original: AudioBuffer | null = null;
+  private originalSource: AudioBufferSourceNode | null = null;
+  private originalLevel = 1;
+  private listenMode: ListenMode = "8d";
   private readonly meters: [AnalyserNode, AnalyserNode];
   private readonly meterBuf = new Float32Array(METER_FFT);
   private buffer: AudioBuffer | null = null;
@@ -56,6 +66,9 @@ export class AudioEngine {
     this.eqs = [this.ctx.createConvolver(), this.ctx.createConvolver()];
     this.eqGains = [this.ctx.createGain(), this.ctx.createGain()];
     this.master = this.ctx.createGain();
+    this.path8d = this.ctx.createGain();
+    this.pathOriginal = this.ctx.createGain();
+    this.pathOriginal.gain.value = 0;
     const limiter = this.ctx.createDynamicsCompressor();
     limiter.threshold.value = LIMITER.threshold;
     limiter.knee.value = LIMITER.knee;
@@ -66,9 +79,10 @@ export class AudioEngine {
     this.eqs.forEach((eq, i) => {
       eq.normalize = false;
       this.eqGains[i].gain.value = i === this.activeEq ? 1 : 0;
-      this.preEq.connect(eq).connect(this.eqGains[i]).connect(this.master);
+      this.preEq.connect(eq).connect(this.eqGains[i]).connect(this.path8d);
     });
-    this.master.connect(limiter).connect(this.ctx.destination);
+    this.path8d.connect(this.master).connect(limiter).connect(this.ctx.destination);
+    this.pathOriginal.connect(limiter);
     const split = this.ctx.createChannelSplitter(2);
     this.meters = [this.ctx.createAnalyser(), this.ctx.createAnalyser()];
     limiter.connect(split);
@@ -131,6 +145,7 @@ export class AudioEngine {
   /** 解码 7 个试听文件并打包成一个 9 声道缓冲（保证各声源采样级同步）。 */
   async loadStems(files: Record<string, ArrayBuffer>): Promise<void> {
     this.stop();
+    this.original = null;
     const decoded = await Promise.all(STEM_LAYOUT.map((s) => this.ctx.decodeAudioData(files[s.name])));
     const length = Math.min(...decoded.map((b) => b.length));
     const packed = this.ctx.createBuffer(INPUT_CHANNELS.length, length, SAMPLE_RATE);
@@ -141,6 +156,37 @@ export class AudioEngine {
     });
     this.buffer = packed;
     this.songOffset = 0;
+  }
+
+  /** 原曲（立体声）；level = 响度对齐增益 × 试听文件缩放。 */
+  async loadOriginal(wav: ArrayBuffer, level: number): Promise<void> {
+    this.original = await this.ctx.decodeAudioData(wav);
+    this.originalLevel = level;
+    this.applyListen(0);
+  }
+
+  get listening(): ListenMode {
+    return this.listenMode;
+  }
+
+  /** 在 8D 与原曲之间切换（两路一直同步在播，只交叉淡化音量）。 */
+  setListen(mode: ListenMode): void {
+    if (mode === "original" && !this.original) return;
+    this.listenMode = mode;
+    this.applyListen(AB_FADE_S);
+  }
+
+  private applyListen(fade: number): void {
+    const now = this.ctx.currentTime;
+    const targets: Array<[GainNode, number]> = [
+      [this.path8d, this.listenMode === "8d" ? 1 : 0],
+      [this.pathOriginal, this.listenMode === "original" ? this.originalLevel : 0],
+    ];
+    for (const [node, value] of targets) {
+      node.gain.cancelScheduledValues(now);
+      node.gain.setValueAtTime(node.gain.value, now);
+      node.gain.linearRampToValueAtTime(value, now + Math.max(fade, 1 / SAMPLE_RATE));
+    }
   }
 
   async setRoom(brirWav: ArrayBuffer): Promise<void> {
@@ -183,11 +229,20 @@ export class AudioEngine {
     const offset = this.songOffset >= this.duration ? 0 : this.songOffset;
     this.post({ type: "transport", playing: true, startFrame: Math.round(when * SAMPLE_RATE), songOffset: offset });
     src.start(when, offset);
+    if (this.original) {
+      const orig = this.ctx.createBufferSource(); // 同一时刻、同一位置开始：与 8D 采样级同步
+      orig.buffer = this.original;
+      orig.connect(this.pathOriginal);
+      orig.start(when, offset);
+      this.originalSource = orig;
+    }
     src.onended = () => {
       if (this.source !== src) return;
       this.playing = false;
       this.songOffset = this.duration;
       this.source = null;
+      this.originalSource?.disconnect(); // 原曲与 8D 等长，同时播完
+      this.originalSource = null;
       this.onEnded?.();
     };
     this.source = src;
@@ -211,6 +266,12 @@ export class AudioEngine {
   }
 
   private stop(): void {
+    if (this.originalSource) {
+      const orig = this.originalSource;
+      this.originalSource = null;
+      orig.stop();
+      orig.disconnect();
+    }
     if (this.source) {
       const src = this.source;
       this.source = null;

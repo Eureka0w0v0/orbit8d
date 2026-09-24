@@ -1,7 +1,7 @@
 // 总控：界面阶段状态机 + 场景数据（分段时间轴）+ 3D 视图 + 试听引擎 + 导入导出流程。
 
 import { ApiError, api, poll } from "./api";
-import { AudioEngine, STEM_NAMES } from "./audio/engine";
+import { AudioEngine, STEM_NAMES, type ListenMode } from "./audio/engine";
 import { buildRenderParams, compileMotions, effectiveTrackGains, type Timing } from "./audio/params";
 import { toOrbitParams, type OrbitParams } from "./orbit/orbit";
 import { phaseAt, type TrackMotion } from "./orbit/timeline";
@@ -11,13 +11,16 @@ import {
   applyPreset,
   barGrid,
   moveBoundary,
+  moveEvent,
   removeEvent,
   removeSection,
+  resizeEvent,
   sectionIndexAt,
   splitAt,
   type BarGrid,
   type EditResult,
 } from "./scene/edit";
+import { History } from "./scene/history";
 import { Handles } from "./scene/handles";
 import { layerOf } from "./scene/layers";
 import { loadHead } from "./scene/head";
@@ -51,6 +54,9 @@ const LAST_PROJECT_KEY = "orbit8d.lastProject";
 const DOME_KEY = "orbit8d.showDome";
 const TOAST_MS = 4000;
 const EQ_DEBOUNCE_MS = 250;
+const SAVE_DEBOUNCE_MS = 800;
+const SAVE_RETRY_MS = 5000;
+const ORIGINAL_PREVIEW = "original";
 const SEEK_STEP_S = 5;
 const STAGE_SPAN: Partial<Record<Project["state"], [number, number]>> = {
   UPLOADED: [0, 0.02],
@@ -60,6 +66,16 @@ const STAGE_SPAN: Partial<Record<Project["state"], [number, number]>> = {
 };
 const BUSY: ReadonlySet<Project["state"]> = new Set(["UPLOADED", "DECODING", "SEPARATING", "ANALYZING"]);
 const STEREO: ReadonlySet<TrackName> = new Set(["drums", "other"]);
+const TEXT_ENTRY = new Set(["TEXTAREA", "SELECT"]);
+const TEXT_INPUT_TYPES = new Set(["text", "search", "number", "email", "password", "url"]);
+
+type SaveState = "saved" | "saving" | "failed";
+
+/** 可以打字的地方不抢快捷键（本应用目前没有文本框，防将来加了以后误触）。 */
+function isTextEntry(el: HTMLElement): boolean {
+  if (TEXT_ENTRY.has(el.tagName) || el.isContentEditable) return true;
+  return el.tagName === "INPUT" && TEXT_INPUT_TYPES.has((el as HTMLInputElement).type);
+}
 
 function describe(err: unknown): string {
   if (err instanceof ApiError) return `${err.message}（${err.code}）`;
@@ -88,6 +104,11 @@ export class App {
   private paramsDirty = false;
   private eqTimer = 0;
   private eqSeq = 0;
+  private selectedEvent: number | null = null;
+  private readonly history = new History<Scene>();
+  private saveTimer = 0;
+  private saveSeq = 0;
+  private pendingSave: { projectId: string; scene: Scene } | null = null;
   private readonly brirCache = new Map<RoomName, ArrayBuffer>();
   private loadedRoom: RoomName | null = null;
   private readonly views = new Map<TrackName, OrbitView>();
@@ -103,15 +124,24 @@ export class App {
   private exportDialog!: ExportDialog;
   private title!: HTMLElement;
   private toastBox!: HTMLElement;
+  private undoButton!: HTMLButtonElement;
+  private redoButton!: HTMLButtonElement;
+  private saveStatus!: HTMLElement;
 
   async start(root: HTMLElement): Promise<void> {
     const viewport = h("div", { class: "viewport" });
     this.title = h("span", { class: "song" });
+    this.undoButton = h("button", { type: "button", class: "ghost icon", title: TEXT.undo, disabled: true, onclick: () => this.undo() }, "↩\uFE0E");
+    this.redoButton = h("button", { type: "button", class: "ghost icon", title: TEXT.redo, disabled: true, onclick: () => this.redo() }, "↪\uFE0E");
+    this.saveStatus = h("span", { class: "save-status" });
     const header = h(
       "header",
       { class: "topbar" },
       h("span", { class: "logo" }, TEXT.appName),
       this.title,
+      this.undoButton,
+      this.redoButton,
+      this.saveStatus,
       h("button", { type: "button", class: "ghost", onclick: () => this.overlay.pickFile() }, "导入新歌"),
       h("button", { type: "button", class: "primary", onclick: () => this.openExport() }, TEXT.export),
     );
@@ -121,9 +151,14 @@ export class App {
     this.timeline = new TimelineStrip({
       seek: (t) => void this.seek(t),
       moveBoundary: (k, t) => this.editScene((s) => moveBoundary(s, k, t, this.grid!, this.duration)),
+      selectEvent: (index) => this.selectEvent(index),
+      moveEvent: (index, anchor, free) => this.editScene((s) => moveEvent(s, index, anchor, this.grid!, this.duration, free)),
+      resizeEvent: (index, end, free) => this.editScene((s) => resizeEvent(s, index, end, this.grid!, this.duration, free)),
     });
-    this.transport = new Transport(() => void this.togglePlay(), this.timeline.el);
-    root.replaceChildren(viewport, header, this.transport.el, h("p", { class: "credits" }, TEXT.credits), this.overlay.el, this.exportDialog.el, this.toastBox);
+    this.transport = new Transport(() => void this.togglePlay(), this.timeline.el, () => this.toggleListen());
+    const badge = h("div", { class: "listen-badge" }, TEXT.listeningOriginal);
+    root.replaceChildren(viewport, badge, header, this.transport.el, h("p", { class: "credits" }, TEXT.credits), this.overlay.el, this.exportDialog.el, this.toastBox);
+    window.addEventListener("pagehide", () => void this.flushSave(true)); // 关页面前把没存的改动发出去
     this.overlay.showProgress("正在启动", null);
 
     try {
@@ -250,10 +285,10 @@ export class App {
     return lo + (hi - lo) * p.progress;
   }
 
-  /** 新项目默认用自动编排；万一取不到就退回经典预设。 */
+  /** 优先用这首歌上次保存的场景；没保存过用自动编排；万一取不到就退回经典预设。 */
   private async initialScene(project: Project): Promise<Scene> {
     try {
-      return await api.choreography(project.id);
+      return (await api.savedScene(project.id)) ?? (await api.choreography(project.id));
     } catch (err) {
       console.warn("[orbit8d] 自动编排不可用，改用经典预设", err);
       return api.preset(FALLBACK_PRESET, project.analysis!.default_bars);
@@ -265,17 +300,27 @@ export class App {
     if (!analysis) throw new Error("项目缺少分析结果");
     this.go("loading");
     this.overlay.showProgress("加载试听音频", null, project.source.filename);
-    const buffers = await Promise.all(STEM_NAMES.map(async (n) => [n, await api.stem(project.id, n)] as const));
+    await this.flushSave(); // 换歌前先把上一首没存的改动存掉
+    const [buffers, original] = await Promise.all([
+      Promise.all(STEM_NAMES.map(async (n) => [n, await api.stem(project.id, n)] as const)),
+      api.stem(project.id, ORIGINAL_PREVIEW),
+    ]);
     await this.engine.loadStems(Object.fromEntries(buffers));
+    await this.engine.loadOriginal(original, analysis.original_gain * project.preview_scale);
+    this.setListen("8d");
     const scene = await this.initialScene(project);
     this.project = project;
     this.timing = { bpmNorm: analysis.bpm_norm, tRef: analysis.t_ref, durationS: analysis.duration_s };
     this.grid = barGrid(analysis.bpm_norm, analysis.t_ref);
     this.selected = "vocals";
     this.section = 0;
+    this.selectedEvent = null;
+    this.history.clear();
+    this.timeline.setEnvelope(analysis.envelope_db, analysis.envelope_hop_s);
     await this.ensureRoom(scene.room.name);
     await this.engine.setEq(await api.sceneEq(project.id, scene));
-    this.applyScene(scene, false);
+    this.applyScene(scene, { record: false, save: false, refreshEq: false });
+    this.setSaveState("saved");
     this.title.textContent = project.source.title
       ? `${project.source.artist ? `${project.source.artist} - ` : ""}${project.source.title}`
       : project.source.filename;
@@ -307,7 +352,10 @@ export class App {
       splitSection: () => this.tryEdit((s) => splitAt(s, this.engine.time, this.grid!, this.duration)),
       removeSection: () => this.tryEdit((s) => removeSection(s, this.section)),
       addEvent: (kind: EventKind) => this.tryEdit((s) => addEvent(s, kind, this.engine.time, this.selected, this.grid!)),
-      removeEvent: (index) => this.editScene((s) => removeEvent(s, index)),
+      removeEvent: (index) => {
+        this.selectedEvent = null;
+        this.editScene((s) => removeEvent(s, index));
+      },
       resetView: () => this.stage.resetView(),
       domeVisible: () => this.dome.visible,
       toggleDome: (visible) => {
@@ -368,15 +416,95 @@ export class App {
     }
   }
 
-  private applyScene(scene: Scene, refreshEq = true): void {
+  /**
+   * 换上新场景。record：进撤销记录（撤销 / 重做本身和刚打开时不记）；save：自动保存；refreshEq：重取补偿 EQ。
+   */
+  private applyScene(scene: Scene, opts: { record?: boolean; save?: boolean; refreshEq?: boolean } = {}): void {
+    const { record = true, save = true, refreshEq = true } = opts;
     if (!this.timing) return;
+    if (record && this.scene && scene !== this.scene) this.history.record(this.scene, performance.now());
+    if (this.selectedEvent !== null && this.selectedEvent >= scene.events.length) this.selectedEvent = null;
     this.scene = scene;
     this.motions = compileMotions(scene, this.timing);
     this.section = Math.min(sectionIndexAt(scene, this.engine.time), scene.sections.length - 1);
     this.syncViews();
     this.paramsDirty = true;
     if (refreshEq) this.scheduleEq();
+    if (save) this.scheduleSave();
+    this.updateUndoButtons();
     if (scene.room.name !== this.loadedRoom) void this.ensureRoom(scene.room.name).catch((err) => this.fail(err));
+  }
+
+  // ---------- 撤销 / 重做 ----------
+  private undo(): void {
+    if (!this.scene || this.phase !== "ready") return;
+    const previous = this.history.undo(this.scene);
+    if (!previous) return;
+    this.selectedEvent = null; // 事件下标可能变了
+    this.applyScene(previous, { record: false });
+  }
+
+  private redo(): void {
+    if (!this.scene || this.phase !== "ready") return;
+    const next = this.history.redo(this.scene);
+    if (!next) return;
+    this.selectedEvent = null;
+    this.applyScene(next, { record: false });
+  }
+
+  private updateUndoButtons(): void {
+    this.undoButton.disabled = !this.history.canUndo;
+    this.redoButton.disabled = !this.history.canRedo;
+  }
+
+  // ---------- 自动保存（整份替换，只保存最后一次；失败隔几秒重试） ----------
+  private scheduleSave(): void {
+    if (!this.project || !this.scene) return;
+    this.pendingSave = { projectId: this.project.id, scene: this.scene };
+    this.setSaveState("saving");
+    window.clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => void this.flushSave(), SAVE_DEBOUNCE_MS);
+  }
+
+  private async flushSave(keepalive = false): Promise<void> {
+    window.clearTimeout(this.saveTimer);
+    const job = this.pendingSave;
+    if (!job) return;
+    this.pendingSave = null;
+    const seq = ++this.saveSeq;
+    try {
+      await api.saveScene(job.projectId, job.scene, keepalive);
+      if (seq === this.saveSeq && !this.pendingSave) this.setSaveState("saved");
+    } catch (err) {
+      console.warn("[orbit8d] 保存场景失败，稍后重试", err);
+      if (seq !== this.saveSeq) return; // 已经有更新的保存在进行
+      this.pendingSave ??= job;
+      this.setSaveState("failed");
+      this.saveTimer = window.setTimeout(() => void this.flushSave(), SAVE_RETRY_MS);
+    }
+  }
+
+  private setSaveState(state: SaveState): void {
+    this.saveStatus.textContent = state === "saved" ? TEXT.saved : state === "saving" ? TEXT.saving : TEXT.saveFailed;
+    this.saveStatus.dataset.state = state;
+  }
+
+  // ---------- 原曲 / 8D 对比 ----------
+  private toggleListen(): void {
+    if (this.phase !== "ready") return;
+    this.setListen(this.engine.listening === "8d" ? "original" : "8d");
+  }
+
+  private setListen(mode: ListenMode): void {
+    this.engine.setListen(mode);
+    document.body.dataset.listen = this.engine.listening;
+    this.transport.setListen(this.engine.listening, true);
+  }
+
+  // ---------- 事件选择 ----------
+  private selectEvent(index: number | null): void {
+    this.selectedEvent = index;
+    if (this.scene) this.timeline.setScene(this.scene, this.duration, this.section, this.selectedEvent);
   }
 
   /** 3D 轨道形状、面板、时间轴都显示播放头所在的那一段。 */
@@ -400,7 +528,7 @@ export class App {
     const ctx: PanelContext = { scene, track: this.selected, section: this.section, analysis, duration: this.duration };
     this.tracksPanel.sync(ctx);
     this.orbitPanel.sync(ctx);
-    this.timeline.setScene(scene, this.duration, this.section);
+    this.timeline.setScene(scene, this.duration, this.section, this.selectedEvent);
   }
 
   /** 场景改完 250 ms 没再改，就向后端要这个场景的补偿 EQ；只用最后一次请求的结果。 */
@@ -477,7 +605,31 @@ export class App {
 
   private onKey(e: KeyboardEvent): void {
     const target = e.target as HTMLElement;
-    if (["INPUT", "BUTTON", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+    if (isTextEntry(target)) return;
+    if ((e.metaKey || e.ctrlKey) && (e.code === "KeyZ" || e.code === "KeyY")) {
+      e.preventDefault();
+      if (e.code === "KeyY" || e.shiftKey) this.redo();
+      else this.undo();
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.code === "KeyB") {
+      e.preventDefault();
+      this.toggleListen();
+      return;
+    }
+    if ((e.code === "Delete" || e.code === "Backspace") && this.selectedEvent !== null && this.phase === "ready") {
+      e.preventDefault();
+      const index = this.selectedEvent;
+      this.selectedEvent = null;
+      this.editScene((s) => removeEvent(s, index));
+      return;
+    }
+    if (e.code === "Escape" && this.selectedEvent !== null) {
+      this.selectEvent(null);
+      return;
+    }
+    if (["INPUT", "BUTTON", "SELECT"].includes(target.tagName)) return; // 空格、方向键留给聚焦的控件
     if (e.code === "Space") {
       e.preventDefault();
       void this.togglePlay();

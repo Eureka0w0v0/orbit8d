@@ -42,6 +42,24 @@ export const api = {
   brir: (room: RoomName) => getBytes(`/api/assets/brir/${room}.wav`),
   choreography: (id: string) => getJson<Scene>(`/api/projects/${id}/choreography`),
 
+  /** 这首歌上次保存的场景；没保存过返回 null。 */
+  async savedScene(id: string): Promise<Scene | null> {
+    const resp = await fetch(`/api/projects/${id}/scene`);
+    if (resp.status === 404) return null;
+    return (await (await check(resp)).json()) as Scene;
+  },
+
+  /** 整份替换保存。keepalive：页面关闭时也尽量发出去（请求体 ≤ 64 KB）。 */
+  async saveScene(id: string, scene: Scene, keepalive = false): Promise<void> {
+    const resp = await fetch(`/api/projects/${id}/scene`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(scene),
+      keepalive,
+    });
+    await check(resp);
+  },
+
   /** 这个场景的补偿 EQ（单声道 WAV 冲激响应），导出用的是同一个。 */
   async sceneEq(projectId: string, scene: Scene): Promise<ArrayBuffer> {
     const resp = await fetch(`/api/projects/${projectId}/eq`, {

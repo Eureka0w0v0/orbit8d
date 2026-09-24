@@ -92,6 +92,9 @@ export interface Analysis {
   match_eq_db: number[];
   spectra: Record<string, number[]>;
   sections: SectionInfo[];
+  original_gain: number; // 原曲试听的增益：和 8D 试听一样响
+  envelope_db: number[]; // 原曲每 envelope_hop_s 秒的音量（相对最响处，dB，最低 -60）
+  envelope_hop_s: number;
   version: number;
 }
 

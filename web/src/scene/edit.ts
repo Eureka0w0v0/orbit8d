@@ -1,6 +1,7 @@
 // 场景编辑（纯函数，不改入参）：段落切分 / 删除 / 拖分界、事件增删、预设套用到当前段。
 // 规则与后端 Scene 校验一致（第一段从 0 秒开始、分界严格递增、同一音轨同类事件不重叠），不合法的操作返回原因。
 
+import { BEATS_PER_BAR } from "../orbit/orbit";
 import { barSeconds } from "../orbit/timeline";
 import type { EventKind, Scene, SceneEvent, TrackName } from "../types";
 import { HOLD_RAMP_S } from "../types";
@@ -27,6 +28,12 @@ export function barGrid(bpmNorm: number, tRef: number): BarGrid {
 
 export function snapToBar(g: BarGrid, t: number): number {
   return g.first + Math.round((t - g.first) / g.bar) * g.bar;
+}
+
+/** 吸附到最近的一拍（1/4 小节）。 */
+export function snapToBeat(g: BarGrid, t: number): number {
+  const beat = g.bar / BEATS_PER_BAR;
+  return g.first + Math.round((t - g.first) / beat) * beat;
 }
 
 export function sectionIndexAt(scene: Scene, t: number): number {
@@ -97,6 +104,59 @@ export function addEvent(scene: Scene, kind: EventKind, t: number, track: TrackN
   next.events.push(event);
   next.events.sort((x, y) => x.t_s - y.t_s);
   return { ok: true, scene: next };
+}
+
+/**
+ * 时间轴上事件条的起点：停顿 = 完全停住的那一刻（开始减速后 0.5 秒），飞过头顶 = 开始时刻。
+ * 事件条从这里画到 起点 + duration_s；拖动与吸附也都以它为准。
+ */
+export function eventAnchor(e: SceneEvent): number {
+  return e.t_s + (e.kind === "hold" ? HOLD_RAMP_S : 0);
+}
+
+/** 第 index 个事件现在所在的空档：前后是同类、共用任一音轨的事件（拖动时不能越过它们）。 */
+function freeGap(scene: Scene, index: number, durationS: number): [number, number] {
+  const self = scene.events[index];
+  const [start, end] = span(self);
+  let lo = 0;
+  let hi = durationS;
+  scene.events.forEach((e, i) => {
+    if (i === index || e.kind !== self.kind || !e.targets.some((t) => self.targets.includes(t))) return;
+    const [a, b] = span(e);
+    if (b <= start) lo = Math.max(lo, b);
+    else if (a >= end) hi = Math.min(hi, a);
+  });
+  return [lo, hi];
+}
+
+/** 拖动事件：起点（见 eventAnchor）吸附到拍（free 时不吸附），只在自己的空档里移动；不改数组顺序。 */
+export function moveEvent(scene: Scene, index: number, anchor: number, grid: BarGrid, durationS: number, free = false): Scene {
+  const e = scene.events[index];
+  if (!e) return scene;
+  const lead = eventAnchor(e) - e.t_s;
+  const [lo, hi] = freeGap(scene, index, durationS);
+  const length = span(e)[1] - e.t_s;
+  const target = (free ? anchor : snapToBeat(grid, anchor)) - lead;
+  const t = Math.min(Math.max(target, lo), Math.max(lo, hi - length));
+  if (t === e.t_s) return scene;
+  const next = structuredClone(scene);
+  next.events[index].t_s = t;
+  return next;
+}
+
+/** 拖事件条右边缘改长短：终点吸附到拍（free 时不吸附），0.5–30 秒，不压到后面的同类事件、不超出歌曲。 */
+export function resizeEvent(scene: Scene, index: number, end: number, grid: BarGrid, durationS: number, free = false): Scene {
+  const e = scene.events[index];
+  if (!e) return scene;
+  const [, hi] = freeGap(scene, index, durationS);
+  const ramps = span(e)[1] - e.t_s - e.duration_s; // 停顿前后的减速 / 加速
+  const room = hi - e.t_s - ramps;
+  const wanted = (free ? end : snapToBeat(grid, end)) - eventAnchor(e);
+  const duration = Math.min(Math.max(wanted, MIN_EVENT_S), MAX_EVENT_S, Math.max(MIN_EVENT_S, room));
+  if (duration === e.duration_s) return scene;
+  const next = structuredClone(scene);
+  next.events[index].duration_s = duration;
+  return next;
 }
 
 export function removeEvent(scene: Scene, index: number): Scene {

@@ -85,6 +85,9 @@ a.button {
   border-radius: 999px;
   backdrop-filter: blur(16px);
   z-index: 5;
+  width: max-content; /* 居中定位时可用宽度只有半屏，不设的话按钮文字会折行 */
+  max-width: calc(100vw - 2 * var(--gap));
+  white-space: nowrap;
 }
 .logo {
   font-weight: 800;
@@ -94,9 +97,31 @@ a.button {
   background-clip: text;
   color: transparent;
 }
+button.icon {
+  width: 30px;
+  padding: 4px 0;
+  font-size: 15px;
+}
+button.icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.save-status {
+  min-width: 64px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.save-status[data-state="failed"] {
+  color: #ff8a8a;
+}
+body:not([data-phase="ready"]) .topbar .icon,
+body:not([data-phase="ready"]) .save-status {
+  display: none;
+}
 .song {
   color: var(--muted);
-  max-width: 34vw;
+  max-width: 26vw;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -305,6 +330,42 @@ input[type="range"] {
 body:not([data-phase="ready"]) .transport {
   display: none;
 }
+.listen {
+  min-width: 46px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.listen.original {
+  background: #f1eee8;
+  color: #111;
+  border-color: transparent;
+}
+.listen:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.listen-badge {
+  position: fixed;
+  top: 78px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(241, 238, 232, 0.92);
+  color: #111;
+  font-weight: 600;
+  z-index: 6;
+  display: none;
+}
+body[data-listen="original"][data-phase="ready"] .listen-badge {
+  display: block;
+}
+body[data-listen="original"] .viewport canvas {
+  filter: grayscale(0.8) brightness(0.55);
+  transition: filter 0.2s;
+}
 .play {
   width: 38px;
   height: 38px;
@@ -326,21 +387,25 @@ body:not([data-phase="ready"]) .transport {
   position: relative;
   flex: 1;
   min-width: 160px;
-  height: 34px;
+  height: 38px;
 }
 .tl-marks {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 7px;
+  height: 11px;
+  touch-action: none;
 }
 .tl-mark {
   position: absolute;
   top: 1px;
-  height: 5px;
-  min-width: 5px;
-  border-radius: 3px;
+  height: 9px;
+  min-width: 10px;
+  border-radius: 4px;
+}
+.tl-mark.selected {
+  box-shadow: 0 0 0 1.5px #fff;
 }
 .tl-mark.hold {
   background: #ffc24b;
@@ -350,7 +415,7 @@ body:not([data-phase="ready"]) .transport {
 }
 .tl-lane {
   position: absolute;
-  top: 9px;
+  top: 13px;
   bottom: 0;
   left: 0;
   right: 0;
@@ -377,6 +442,14 @@ body:not([data-phase="ready"]) .transport {
 .tl-block.current {
   color: #fff;
   background: color-mix(in srgb, var(--c) 62%, transparent);
+}
+.tl-envelope {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
 }
 .tl-grip {
   position: absolute;
