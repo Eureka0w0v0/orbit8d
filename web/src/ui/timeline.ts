@@ -1,5 +1,5 @@
 // 播放条里的时间轴：段落色块 + 原曲音量起伏 + 事件条 + 播放头。
-// 点色块跳到那里；拖段落之间的竖线调整分界；拖事件条移动、拖事件条右边缘改长短（吸附到拍，按住 ⌥ 自由），
+// 点色块跳到那里，按住左右拖可以预览（松手才真正跳过去）；拖段落之间的竖线调整分界；拖事件条移动、拖事件条右边缘改长短（吸附到拍，按住 ⌥ 自由），
 // 点一下事件条选中它（Delete 删除）。数值合法性（吸附、不重叠）由 App 调 scene/edit.ts 保证。
 
 import { eventAnchor } from "../scene/edit";
@@ -8,7 +8,11 @@ import { fmt, h } from "./dom";
 import { DEFAULT_SECTION_COLOR, EVENT_LABEL, SECTION_COLORS, TEXT, TRACK_LABEL } from "./labels";
 
 export interface TimelineActions {
-  seek(t: number): void;
+  /** 在色块上按下：开始拖播放头（单击 = 按下后马上松开）。 */
+  scrubStart(t: number): void;
+  scrub(t: number): void;
+  /** 松手（或拖动被系统打断）：跳到 t。 */
+  scrubEnd(t: number): void;
   moveBoundary(k: number, t: number): void;
   selectEvent(index: number | null): void;
   /** anchor：事件条的新起点（停顿 = 完全停住的时刻）。free：不吸附。 */
@@ -16,7 +20,11 @@ export interface TimelineActions {
   resizeEvent(index: number, end: number, free: boolean): void;
 }
 
-type Drag = { kind: "boundary"; k: number } | { kind: "move"; index: number; grab: number } | { kind: "resize"; index: number };
+type Drag =
+  | { kind: "scrub"; last: number }
+  | { kind: "boundary"; k: number }
+  | { kind: "move"; index: number; grab: number }
+  | { kind: "resize"; index: number };
 
 const EDGE_PX = 6; // 事件条右端这么宽的区域是“改长短”，但最多占条宽的 1/3（短事件也能拖动位置）
 const ENVELOPE_RANGE_DB = 40; // 比最响处低 40 dB 以下都贴底
@@ -50,7 +58,7 @@ export class TimelineStrip {
     for (const target of [this.lane, this.marks]) {
       target.addEventListener("pointermove", this.onMove);
       target.addEventListener("pointerup", this.onUp);
-      target.addEventListener("lostpointercapture", () => (this.drag = null));
+      target.addEventListener("lostpointercapture", this.onLost);
     }
     this.lane.addEventListener("pointerdown", this.onLaneDown);
     this.marks.addEventListener("pointerdown", this.onMarksDown);
@@ -71,7 +79,10 @@ export class TimelineStrip {
       this.lane.setPointerCapture(e.pointerId);
       return;
     }
-    this.actions.seek(this.timeAt(e.clientX));
+    const t = this.timeAt(e.clientX);
+    this.drag = { kind: "scrub", last: t };
+    this.lane.setPointerCapture(e.pointerId);
+    this.actions.scrubStart(t);
   };
 
   private onMarksDown = (e: PointerEvent): void => {
@@ -101,15 +112,27 @@ export class TimelineStrip {
       return;
     }
     const t = this.timeAt(e.clientX);
-    if (d.kind === "boundary") this.actions.moveBoundary(d.k, t);
+    if (d.kind === "scrub") {
+      d.last = t;
+      this.actions.scrub(t);
+    } else if (d.kind === "boundary") this.actions.moveBoundary(d.k, t);
     else if (d.kind === "move") this.actions.moveEvent(d.index, t - d.grab, e.altKey);
     else this.actions.resizeEvent(d.index, t, e.altKey);
   };
 
   private onUp = (e: PointerEvent): void => {
-    if (!this.drag) return;
-    this.drag = null;
+    const d = this.drag;
+    if (!d) return;
+    this.drag = null; // 先清掉，释放捕获时触发的 lostpointercapture 就不会再结束一次
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    if (d.kind === "scrub") this.actions.scrubEnd(this.timeAt(e.clientX));
+  };
+
+  /** 拖动被系统打断（切走窗口等）：拖播放头时跳到最后的位置。 */
+  private onLost = (): void => {
+    const d = this.drag;
+    this.drag = null;
+    if (d?.kind === "scrub") this.actions.scrubEnd(d.last);
   };
 
   /** 原曲音量起伏（每首歌设一次）。 */

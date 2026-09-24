@@ -105,6 +105,8 @@ export class App {
   private eqTimer = 0;
   private eqSeq = 0;
   private selectedEvent: number | null = null;
+  private scrubTime: number | null = null; // 正在拖播放头时的预览位置
+  private resumeAfterScrub = false;
   private readonly history = new History<Scene>();
   private saveTimer = 0;
   private saveSeq = 0;
@@ -149,7 +151,9 @@ export class App {
     this.overlay = new Overlay((file) => void this.importFile(file));
     this.exportDialog = new ExportDialog();
     this.timeline = new TimelineStrip({
-      seek: (t) => void this.seek(t),
+      scrubStart: (t) => this.scrubStart(t),
+      scrub: (t) => this.scrub(t),
+      scrubEnd: (t) => void this.scrubEnd(t),
       moveBoundary: (k, t) => this.editScene((s) => moveBoundary(s, k, t, this.grid!, this.duration)),
       selectEvent: (index) => this.selectEvent(index),
       moveEvent: (index, anchor, free) => this.editScene((s) => moveEvent(s, index, anchor, this.grid!, this.duration, free)),
@@ -501,6 +505,31 @@ export class App {
     this.transport.setListen(this.engine.listening, true);
   }
 
+  // ---------- 拖播放头：拖动中只预览（3D、面板、时间都跟着走），松手才跳；播放中先暂停、松手接着播 ----------
+  private scrubStart(t: number): void {
+    if (this.phase !== "ready") return;
+    this.resumeAfterScrub = this.engine.playing;
+    if (this.resumeAfterScrub) this.engine.pause();
+    this.scrubTime = t;
+  }
+
+  private scrub(t: number): void {
+    if (this.scrubTime !== null) this.scrubTime = t;
+  }
+
+  private async scrubEnd(t: number): Promise<void> {
+    if (this.scrubTime === null) return;
+    this.scrubTime = null;
+    const resume = this.resumeAfterScrub;
+    this.resumeAfterScrub = false;
+    try {
+      await this.engine.seek(t);
+      if (resume) await this.engine.play();
+    } catch (err) {
+      this.fail(err);
+    }
+  }
+
   // ---------- 事件选择 ----------
   private selectEvent(index: number | null): void {
     this.selectedEvent = index;
@@ -570,7 +599,7 @@ export class App {
       const params = buildRenderParams(this.scene, this.timing, analysis.calibration, this.project.preview_scale);
       this.engine.setParams(params, analysis.preview_gain);
     }
-    const t = this.engine.time;
+    const t = this.scrubTime ?? this.engine.time;
     const k = sectionIndexAt(this.scene, t);
     if (k !== this.section) {
       this.section = k; // 播放头进入新的一段：轨道形状与面板跟着切换
