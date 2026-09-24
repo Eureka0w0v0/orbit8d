@@ -106,7 +106,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | bass_hi | bass 的 120 Hz 以上（平均） | 1 | bass 轨道 |
 | other_L / other_R | other 的 120 Hz 以上 | 2 | other 轨道，offset ∓width/2 |
 | drums_L / drums_R | drums 的 120 Hz 以上 | 2 | drums 轨道，offset ∓width/2 |
-| sub | bass + drums + other 的 120 Hz 以下（平均） | 1 | 固定正前方，不受任何轨道参数影响 |
+| bass_sub / drums_sub / other_sub | 各自 120 Hz 以下（平均） | 各 1 | 固定正前方；跟随本轨音量/静音/独奏，不受轨道参数影响（静音贝斯时它的超低频也一起静音） |
 
 分频：`low = sosfiltfilt(butter(2, 120 Hz))`，`high = x − low`（零相位、相加完全还原）。分离残差 `orig − Σstems` 并入 other。
 
@@ -120,7 +120,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 5. HRIR：在 (el, az) 网格上双线性插值（el 截断到网格范围）。
 6. 分块重叠相加卷积：本块输入 × 本块 HRIR，尾巴加到后续块。
 
-sub：HRIR 取 (0°, 0°)，无压暗、无距离增益，只乘 sub 的校准增益。
+超低频：三轨按各自的音量/静音/独奏相加后，用 (0°, 0°) 的 HRIR 渲染，无压暗、无距离增益，乘 sub 校准增益。
 
 ### 5.3 混响
 - 送出信号（单声道）：`Σ reverb_send × 校准增益 × 10^(gain_db/20) × 静音/独奏 × 声源信号`（不含距离增益，使远近改变直达/混响比）。
@@ -176,7 +176,7 @@ sub：HRIR 取 (0°, 0°)，无压暗、无距离增益，只乘 sub 的校准�
 | GET | /api/health | 版本、可用输出格式 |
 | POST | /api/projects | multipart 上传；流式落盘，>300 MB 立即中止；ffprobe 校验格式白名单与时长 ≤ 20 分钟；项目 ID = 内容 sha256 前 16 位（重复上传直接返回） |
 | GET | /api/projects/{id} | 状态、阶段进度、BPM、时长、默认小节数、t_ref、校准增益、试听总增益 |
-| GET | /api/projects/{id}/stems/{vocals,bass_hi,other_hi,drums_hi,sub}.flac | 试听用 24-bit FLAC |
+| GET | /api/projects/{id}/stems/{vocals_hi,bass_hi,drums_hi,other_hi,bass_sub,drums_sub,other_sub}.flac | 试听用 24-bit FLAC（drums_hi/other_hi 为立体声） |
 | GET | /api/assets/hrtf.bin, /api/assets/eq.wav, /api/assets/brir/{room}.wav | DSP 数据 |
 | POST | /api/projects/{id}/exports | `{scene, format}`；导出 ID = sha256(项目 ID + 规范化场景 JSON + 格式) 前 16 位（幂等） |
 | GET | /api/exports/{id} | 状态、进度 |

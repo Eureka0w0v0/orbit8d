@@ -77,7 +77,9 @@ class Scene(BaseModel):
 
 def canonical_json(scene: Scene) -> str:
     """键排序、无空白的 JSON，用于导出幂等哈希。"""
-    return json.dumps(scene.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return json.dumps(
+        scene.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
 
 
 def effective_track_gains(scene: Scene) -> dict[str, float]:

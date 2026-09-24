@@ -1,0 +1,215 @@
+"""整曲管线（SPEC §5）：声源准备 → 分析（测速、校准）→ 按场景渲染 → 母带。
+
+导出与试听共用：试听用的声源文件（preview_stems）、校准增益、试听总增益都在分析阶段一次算好。
+"""
+
+import json
+from dataclasses import asdict, dataclass
+
+import numpy as np
+from scipy.signal import butter, oaconvolve, sosfiltfilt
+
+from orbit8d.engine.hrtf import HrtfGrid, interpolate
+from orbit8d.engine.master import apply_eq, diffuse_eq, limiter, master_gain
+from orbit8d.engine.orbit import orbit_position
+from orbit8d.engine.render import (
+    BlockPath,
+    block_times,
+    distance_gain,
+    grid_spectra,
+    rear_factor,
+    rear_shelf,
+    render_path,
+    render_static,
+)
+from orbit8d.engine.reverb import synth_brir
+from orbit8d.engine.scene import TRACKS, Room, Scene, effective_track_gains, orbit_params, preset
+from orbit8d.engine.tempo import estimate_tempo, turn_plan
+
+CROSSOVER_HZ = 120.0
+LOW_SPLIT_TRACKS = ("bass", "drums", "other")  # 人声不分频
+STEREO_TRACKS = ("drums", "other")  # 渲染成一对声源
+CALIBRATION_KEYS = (*TRACKS, "sub")
+REFERENCE_PRESET = "classic"
+EPS = 1e-12
+
+
+@dataclass
+class Sources:
+    hi: dict[str, np.ndarray]  # vocals/bass: (n,)；drums/other: (n, 2)
+    sub: dict[str, np.ndarray]  # bass/drums/other 的 120 Hz 以下（单声道）
+    energy_hi: dict[str, float]  # 各音轨运动部分的原始立体声能量
+    energy_sub: float  # 全部超低频的原始立体声能量
+    sr: int
+
+    @property
+    def n(self) -> int:
+        return len(self.hi["vocals"])
+
+
+@dataclass(frozen=True)
+class Analysis:
+    sample_rate: int
+    duration_s: float
+    bpm: float
+    bpm_norm: float
+    default_bars: int
+    t_ref: float
+    calibration: dict[str, float]
+    preview_gain: float
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=False)
+
+    @classmethod
+    def from_json(cls, text: str) -> "Analysis":
+        return cls(**json.loads(text))
+
+
+def split_low(x: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray]:
+    """零相位分频：low + high 完全还原 x。"""
+    low = sosfiltfilt(butter(2, CROSSOVER_HZ, fs=sr, output="sos"), x, axis=0)
+    return low, x - low
+
+
+def prepare_sources(orig: np.ndarray, stems: dict[str, np.ndarray], sr: int) -> Sources:
+    stems = dict(stems)
+    stems["other"] = stems["other"] + (orig - sum(stems.values()))  # 分离残差并入 other，一个音都不丢
+    hi = {"vocals": stems["vocals"].mean(axis=1)}
+    energy_hi = {"vocals": float(np.sum(stems["vocals"] ** 2))}
+    sub, low_total = {}, np.zeros_like(orig)
+    for name in LOW_SPLIT_TRACKS:
+        low, high = split_low(stems[name], sr)
+        sub[name] = low.mean(axis=1)
+        low_total += low
+        hi[name] = high if name in STEREO_TRACKS else high.mean(axis=1)
+        energy_hi[name] = float(np.sum(high**2))
+    return Sources(hi=hi, sub=sub, energy_hi=energy_hi, energy_sub=float(np.sum(low_total**2)), sr=sr)
+
+
+def preview_stems(src: Sources) -> dict[str, np.ndarray]:
+    """浏览器试听用的 7 路声源（文件名 → 数据）。"""
+    files = {f"{name}_hi": src.hi[name] for name in TRACKS}
+    files.update({f"{name}_sub": src.sub[name] for name in LOW_SPLIT_TRACKS})
+    return files
+
+
+class Renderer:
+    """持有 HRTF 频谱、补偿 EQ 和各房间的 BRIR 缓存；本身无业务状态。"""
+
+    def __init__(self, grid: HrtfGrid):
+        self.grid = grid
+        self.spectra = grid_spectra(grid)
+        self.front = interpolate(grid, np.array([0.0]), np.array([0.0]))[0]
+        self.eq = diffuse_eq(grid)
+        self._brirs: dict[str, np.ndarray] = {}
+
+    def brir(self, room: str) -> np.ndarray:
+        if room not in self._brirs:
+            self._brirs[room] = synth_brir(self.grid, room, self.grid.sample_rate)
+        return self._brirs[room]
+
+    def _render_track(
+        self,
+        x: np.ndarray,
+        scene: Scene,
+        name: str,
+        t: np.ndarray,
+        t_ref: float,
+        bpm_norm: float,
+        gain: float,
+    ) -> np.ndarray:
+        track = scene.tracks[name]
+        params = orbit_params(track.orbit, bpm_norm)
+        if x.ndim == 1:
+            channels, offsets = [x], [0.0]
+        else:
+            channels, offsets = [x[:, 0], x[:, 1]], [-track.width_deg / 2, track.width_deg / 2]
+        out = np.zeros((len(channels[0]), 2))
+        for ch, offset in zip(channels, offsets, strict=True):
+            az, el, dist = orbit_position(params, t, t_ref, offset)
+            path = BlockPath(az=az, el=el, gain=distance_gain(dist) * gain, rear=rear_factor(az, el))
+            shaped = rear_shelf(ch, path.rear, scene.rear_darken_db, self.grid.sample_rate)
+            out += render_path(shaped, path, self.spectra, self.grid)
+        return out
+
+    def render_tracks(
+        self, src: Sources, scene: Scene, bpm_norm: float, t_ref: float, calibration: dict[str, float]
+    ) -> dict[str, np.ndarray]:
+        gains = effective_track_gains(scene)
+        t = block_times(src.n, src.sr)
+        out = {}
+        for name in TRACKS:
+            gain = gains[name] * calibration[name]
+            out[name] = (
+                self._render_track(src.hi[name], scene, name, t, t_ref, bpm_norm, gain)
+                if gain > 0
+                else np.zeros((src.n, 2))
+            )
+        sub_mix = sum(gains[name] * src.sub[name] for name in LOW_SPLIT_TRACKS)
+        out["sub"] = render_static(sub_mix, self.front) * calibration["sub"]
+        return out
+
+    def send_signal(self, src: Sources, scene: Scene, calibration: dict[str, float]) -> np.ndarray:
+        gains = effective_track_gains(scene)
+        send = np.zeros(src.n)
+        for name in TRACKS:
+            level = scene.tracks[name].reverb_send * gains[name] * calibration[name]
+            if level > 0:
+                x = src.hi[name]
+                send += level * (x if x.ndim == 1 else x.mean(axis=1))
+        return send
+
+    def reverb(self, send: np.ndarray, room: Room) -> np.ndarray:
+        if not np.any(send):
+            return np.zeros((len(send), 2))
+        brir = self.brir(room.name).astype(np.float64)
+        wet = np.stack([oaconvolve(send, brir[ear])[: len(send)] for ear in (0, 1)], axis=1)
+        return wet * 10 ** (room.wet_db / 20)
+
+    def render_mix(self, src: Sources, scene: Scene, analysis: Analysis) -> np.ndarray:
+        """未经母带的完整混音（干声 + 混响，已过补偿 EQ）。"""
+        tracks = self.render_tracks(src, scene, analysis.bpm_norm, analysis.t_ref, analysis.calibration)
+        wet = self.reverb(self.send_signal(src, scene, analysis.calibration), scene.room)
+        return apply_eq(sum(tracks.values()) + wet, self.eq)
+
+    def export(self, src: Sources, scene: Scene, analysis: Analysis) -> np.ndarray:
+        mix = self.render_mix(src, scene, analysis)
+        mix = mix * master_gain(mix, src.sr)
+        return limiter(mix, src.sr)[0]
+
+    def calibrate(
+        self, src: Sources, bpm_norm: float, t_ref: float, default_bars: int
+    ) -> tuple[dict[str, float], float]:
+        """用“经典 8D”预设渲染一次：每轨校准增益 = √(原始能量 / 渲染能量)；再算试听总增益。"""
+        ref = preset(REFERENCE_PRESET, default_bars)
+        tracks = self.render_tracks(src, ref, bpm_norm, t_ref, dict.fromkeys(CALIBRATION_KEYS, 1.0))
+        targets = {**src.energy_hi, "sub": src.energy_sub}
+        cal = {}
+        for key in CALIBRATION_KEYS:
+            rendered = float(np.sum(tracks[key] ** 2))
+            cal[key] = (
+                float(np.sqrt(targets[key] / rendered)) if rendered > EPS and targets[key] > EPS else 1.0
+            )
+        dry = sum(cal[key] * tracks[key] for key in CALIBRATION_KEYS)
+        mix = apply_eq(dry + self.reverb(self.send_signal(src, ref, cal), ref.room), self.eq)
+        return cal, master_gain(mix, src.sr)
+
+
+def analyze(
+    orig: np.ndarray, stems: dict[str, np.ndarray], sr: int, renderer: Renderer
+) -> tuple[Sources, Analysis]:
+    src = prepare_sources(orig, stems, sr)
+    info = estimate_tempo(stems["drums"].mean(axis=1), sr)
+    bars, t_ref = turn_plan(info)
+    calibration, preview_gain = renderer.calibrate(src, info.bpm_norm, t_ref, bars)
+    return src, Analysis(
+        sample_rate=sr,
+        duration_s=len(orig) / sr,
+        bpm=info.bpm,
+        bpm_norm=info.bpm_norm,
+        default_bars=bars,
+        t_ref=t_ref,
+        calibration=calibration,
+        preview_gain=preview_gain,
+    )
