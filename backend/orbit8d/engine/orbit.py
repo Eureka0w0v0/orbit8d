@@ -86,6 +86,12 @@ def orbit_position(p: OrbitParams, t, t_ref: float, offset_deg: float = 0.0):
         phi = np.full_like(t, p.start_deg + offset_deg)
     else:
         phi = p.start_deg + offset_deg + p.direction * 360.0 * (t - t_ref) / p.period_s
+    return position_at_phase(p, phi)
+
+
+def position_at_phase(p: OrbitParams, phi):
+    """按相位（度）求 (az, el, dist)；时间轴模块用它在任意累积相位上取位置。"""
+    phi = np.asarray(phi, dtype=np.float64)
     az, el, dist = _shape_angles(p, phi)
 
     a, e = np.radians(az), np.radians(el)

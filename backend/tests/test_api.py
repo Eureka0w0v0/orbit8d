@@ -207,7 +207,7 @@ def test_presets_endpoint_returns_valid_scenes(client, name):
     resp = client.get(f"/api/presets/{name}", params={"bars": 2})
     assert resp.status_code == 200
     scene = Scene.model_validate(resp.json())
-    assert any(t.orbit.speed.bars == 2 for t in scene.tracks.values())
+    assert any(o.speed.bars == 2 for o in scene.sections[0].orbits.values())
 
 
 def test_presets_endpoint_rejects_bad_input(client):

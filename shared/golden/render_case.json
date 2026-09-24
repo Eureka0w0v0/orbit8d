@@ -1,5 +1,5 @@
 {
- "version": 1,
+ "version": 2,
  "sample_rate": 44100,
  "samples": 8192,
  "channels": [
@@ -14,27 +14,9 @@
   "other_sub"
  ],
  "scene": {
-  "version": 1,
-  "tracks": {
+  "version": 2,
+  "mix": {
    "vocals": {
-    "orbit": {
-     "shape": "circle",
-     "radius_m": 1.2,
-     "speed": {
-      "mode": "seconds",
-      "bars": 4,
-      "seconds": 2.0
-     },
-     "direction": "cw",
-     "start_deg": 0.0,
-     "height_deg": 20.0,
-     "pitch_deg": 15.0,
-     "roll_deg": 0.0,
-     "yaw_deg": 0.0,
-     "aspect": 0.6,
-     "swing_deg": 120.0,
-     "lift_deg": 30.0
-    },
     "gain_db": 0.0,
     "width_deg": 0.0,
     "reverb_send": 1.0,
@@ -42,24 +24,6 @@
     "solo": false
    },
    "drums": {
-    "orbit": {
-     "shape": "ellipse",
-     "radius_m": 0.7,
-     "speed": {
-      "mode": "bars",
-      "bars": 4,
-      "seconds": 7.0
-     },
-     "direction": "ccw",
-     "start_deg": 0.0,
-     "height_deg": 0.0,
-     "pitch_deg": 0.0,
-     "roll_deg": 0.0,
-     "yaw_deg": 0.0,
-     "aspect": 0.5,
-     "swing_deg": 120.0,
-     "lift_deg": 30.0
-    },
     "gain_db": -3.0,
     "width_deg": 50.0,
     "reverb_send": 0.4,
@@ -67,24 +31,6 @@
     "solo": false
    },
    "bass": {
-    "orbit": {
-     "shape": "fixed",
-     "radius_m": 2.0,
-     "speed": {
-      "mode": "bars",
-      "bars": 4,
-      "seconds": 7.0
-     },
-     "direction": "cw",
-     "start_deg": 45.0,
-     "height_deg": -10.0,
-     "pitch_deg": 0.0,
-     "roll_deg": 0.0,
-     "yaw_deg": 0.0,
-     "aspect": 0.6,
-     "swing_deg": 120.0,
-     "lift_deg": 30.0
-    },
     "gain_db": 0.0,
     "width_deg": 0.0,
     "reverb_send": 0.0,
@@ -92,24 +38,6 @@
     "solo": false
    },
    "other": {
-    "orbit": {
-     "shape": "figure8",
-     "radius_m": 1.2,
-     "speed": {
-      "mode": "bars",
-      "bars": 1,
-      "seconds": 7.0
-     },
-     "direction": "cw",
-     "start_deg": 0.0,
-     "height_deg": 0.0,
-     "pitch_deg": 0.0,
-     "roll_deg": 0.0,
-     "yaw_deg": 30.0,
-     "aspect": 0.6,
-     "swing_deg": 100.0,
-     "lift_deg": 40.0
-    },
     "gain_db": 0.0,
     "width_deg": 30.0,
     "reverb_send": 0.7,
@@ -117,9 +45,266 @@
     "solo": false
    }
   },
+  "sections": [
+   {
+    "start_s": 0.0,
+    "label": "\u5168\u66f2",
+    "orbits": {
+     "vocals": {
+      "shape": "circle",
+      "radius_m": 1.2,
+      "speed": {
+       "mode": "seconds",
+       "bars": 4,
+       "seconds": 2.0
+      },
+      "direction": "cw",
+      "start_deg": 0.0,
+      "height_deg": 20.0,
+      "pitch_deg": 15.0,
+      "roll_deg": 0.0,
+      "yaw_deg": 0.0,
+      "aspect": 0.6,
+      "swing_deg": 120.0,
+      "lift_deg": 30.0
+     },
+     "drums": {
+      "shape": "ellipse",
+      "radius_m": 0.7,
+      "speed": {
+       "mode": "bars",
+       "bars": 4,
+       "seconds": 7.0
+      },
+      "direction": "ccw",
+      "start_deg": 0.0,
+      "height_deg": 0.0,
+      "pitch_deg": 0.0,
+      "roll_deg": 0.0,
+      "yaw_deg": 0.0,
+      "aspect": 0.5,
+      "swing_deg": 120.0,
+      "lift_deg": 30.0
+     },
+     "other": {
+      "shape": "figure8",
+      "radius_m": 1.2,
+      "speed": {
+       "mode": "bars",
+       "bars": 1,
+       "seconds": 7.0
+      },
+      "direction": "cw",
+      "start_deg": 0.0,
+      "height_deg": 0.0,
+      "pitch_deg": 0.0,
+      "roll_deg": 0.0,
+      "yaw_deg": 30.0,
+      "aspect": 0.6,
+      "swing_deg": 100.0,
+      "lift_deg": 40.0
+     },
+     "bass": {
+      "shape": "fixed",
+      "radius_m": 2.0,
+      "speed": {
+       "mode": "bars",
+       "bars": 4,
+       "seconds": 7.0
+      },
+      "direction": "cw",
+      "start_deg": 45.0,
+      "height_deg": -10.0,
+      "pitch_deg": 0.0,
+      "roll_deg": 0.0,
+      "yaw_deg": 0.0,
+      "aspect": 0.6,
+      "swing_deg": 120.0,
+      "lift_deg": 30.0
+     }
+    },
+    "wet_db": -12.0
+   },
+   {
+    "start_s": 0.06,
+    "label": "\u526f\u6b4c",
+    "orbits": {
+     "vocals": {
+      "shape": "circle",
+      "radius_m": 0.8,
+      "speed": {
+       "mode": "seconds",
+       "bars": 4,
+       "seconds": 4.0
+      },
+      "direction": "ccw",
+      "start_deg": 0.0,
+      "height_deg": 0.0,
+      "pitch_deg": 60.0,
+      "roll_deg": 0.0,
+      "yaw_deg": -30.0,
+      "aspect": 0.6,
+      "swing_deg": 120.0,
+      "lift_deg": 30.0
+     },
+     "drums": {
+      "shape": "spiral",
+      "radius_m": 1.2,
+      "speed": {
+       "mode": "seconds",
+       "bars": 4,
+       "seconds": 2.0
+      },
+      "direction": "cw",
+      "start_deg": 0.0,
+      "height_deg": 10.0,
+      "pitch_deg": 0.0,
+      "roll_deg": 0.0,
+      "yaw_deg": 0.0,
+      "aspect": 0.6,
+      "swing_deg": 120.0,
+      "lift_deg": 50.0
+     },
+     "other": {
+      "shape": "circle",
+      "radius_m": 1.2,
+      "speed": {
+       "mode": "bars",
+       "bars": 1,
+       "seconds": 7.0
+      },
+      "direction": "cw",
+      "start_deg": 0.0,
+      "height_deg": 0.0,
+      "pitch_deg": 0.0,
+      "roll_deg": 45.0,
+      "yaw_deg": 0.0,
+      "aspect": 0.6,
+      "swing_deg": 120.0,
+      "lift_deg": 30.0
+     },
+     "bass": {
+      "shape": "fixed",
+      "radius_m": 1.5,
+      "speed": {
+       "mode": "bars",
+       "bars": 4,
+       "seconds": 7.0
+      },
+      "direction": "cw",
+      "start_deg": 135.0,
+      "height_deg": 0.0,
+      "pitch_deg": 0.0,
+      "roll_deg": 0.0,
+      "yaw_deg": 0.0,
+      "aspect": 0.6,
+      "swing_deg": 120.0,
+      "lift_deg": 30.0
+     }
+    },
+    "wet_db": -4.0
+   },
+   {
+    "start_s": 0.12,
+    "label": "\u5c3e\u58f0",
+    "orbits": {
+     "vocals": {
+      "shape": "fixed",
+      "radius_m": 1.2,
+      "speed": {
+       "mode": "bars",
+       "bars": 4,
+       "seconds": 7.0
+      },
+      "direction": "cw",
+      "start_deg": -60.0,
+      "height_deg": 30.0,
+      "pitch_deg": 0.0,
+      "roll_deg": 0.0,
+      "yaw_deg": 0.0,
+      "aspect": 0.6,
+      "swing_deg": 120.0,
+      "lift_deg": 30.0
+     },
+     "drums": {
+      "shape": "pendulum",
+      "radius_m": 1.2,
+      "speed": {
+       "mode": "seconds",
+       "bars": 4,
+       "seconds": 2.0
+      },
+      "direction": "cw",
+      "start_deg": 0.0,
+      "height_deg": 0.0,
+      "pitch_deg": 0.0,
+      "roll_deg": 0.0,
+      "yaw_deg": 0.0,
+      "aspect": 0.6,
+      "swing_deg": 150.0,
+      "lift_deg": 30.0
+     },
+     "other": {
+      "shape": "ellipse",
+      "radius_m": 1.2,
+      "speed": {
+       "mode": "seconds",
+       "bars": 4,
+       "seconds": 3.0
+      },
+      "direction": "cw",
+      "start_deg": 0.0,
+      "height_deg": 0.0,
+      "pitch_deg": 0.0,
+      "roll_deg": 0.0,
+      "yaw_deg": 0.0,
+      "aspect": 0.4,
+      "swing_deg": 120.0,
+      "lift_deg": 30.0
+     },
+     "bass": {
+      "shape": "circle",
+      "radius_m": 1.2,
+      "speed": {
+       "mode": "seconds",
+       "bars": 4,
+       "seconds": 2.0
+      },
+      "direction": "cw",
+      "start_deg": 0.0,
+      "height_deg": 0.0,
+      "pitch_deg": 0.0,
+      "roll_deg": 0.0,
+      "yaw_deg": 0.0,
+      "aspect": 0.6,
+      "swing_deg": 120.0,
+      "lift_deg": 30.0
+     }
+    },
+    "wet_db": -20.0
+   }
+  ],
+  "events": [
+   {
+    "t_s": 0.02,
+    "kind": "hold",
+    "duration_s": 0.5,
+    "targets": [
+     "drums"
+    ]
+   },
+   {
+    "t_s": 0.03,
+    "kind": "overhead",
+    "duration_s": 0.5,
+    "targets": [
+     "vocals",
+     "other"
+    ]
+   }
+  ],
   "room": {
-   "name": "hall",
-   "wet_db": -12.0
+   "name": "hall"
   },
   "rear_darken_db": 9.0
  },

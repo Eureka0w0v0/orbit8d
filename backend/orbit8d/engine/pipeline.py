@@ -11,8 +11,8 @@ from scipy.signal import butter, oaconvolve, sosfiltfilt
 
 from orbit8d.engine.hrtf import HrtfGrid, interpolate
 from orbit8d.engine.master import apply_eq, diffuse_eq, limiter, master_gain
-from orbit8d.engine.orbit import orbit_position
 from orbit8d.engine.render import (
+    BLOCK,
     BlockPath,
     block_times,
     distance_gain,
@@ -23,8 +23,9 @@ from orbit8d.engine.render import (
     render_static,
 )
 from orbit8d.engine.reverb import synth_brir
-from orbit8d.engine.scene import TRACKS, Room, Scene, effective_track_gains, orbit_params, preset
+from orbit8d.engine.scene import TRACKS, Room, Scene, effective_track_gains, preset
 from orbit8d.engine.tempo import estimate_tempo, turn_plan
+from orbit8d.engine.timeline import compile_track, track_position, wet_db_curve
 
 CROSSOVER_HZ = 120.0
 LOW_SPLIT_TRACKS = ("bass", "drums", "other")  # 人声不分频
@@ -118,16 +119,17 @@ class Renderer:
         t_ref: float,
         bpm_norm: float,
         gain: float,
+        duration_s: float,
     ) -> np.ndarray:
-        track = scene.tracks[name]
-        params = orbit_params(track.orbit, bpm_norm)
+        width = scene.mix[name].width_deg
+        motion = compile_track(scene, name, bpm_norm, t_ref, duration_s)
         if x.ndim == 1:
             channels, offsets = [x], [0.0]
         else:
-            channels, offsets = [x[:, 0], x[:, 1]], [-track.width_deg / 2, track.width_deg / 2]
+            channels, offsets = [x[:, 0], x[:, 1]], [-width / 2, width / 2]
         out = np.zeros((len(channels[0]), 2))
         for ch, offset in zip(channels, offsets, strict=True):
-            az, el, dist = orbit_position(params, t, t_ref, offset)
+            az, el, dist = track_position(motion, t, offset)
             path = BlockPath(az=az, el=el, gain=distance_gain(dist) * gain, rear=rear_factor(az, el))
             shaped = rear_shelf(ch, path.rear, scene.rear_darken_db, self.grid.sample_rate)
             out += render_path(shaped, path, self.spectra, self.grid)
@@ -142,7 +144,7 @@ class Renderer:
         for name in TRACKS:
             gain = gains[name] * calibration[name]
             out[name] = (
-                self._render_track(src.hi[name], scene, name, t, t_ref, bpm_norm, gain)
+                self._render_track(src.hi[name], scene, name, t, t_ref, bpm_norm, gain, src.n / src.sr)
                 if gain > 0
                 else np.zeros((src.n, 2))
             )
@@ -150,27 +152,30 @@ class Renderer:
         out["sub"] = render_static(sub_mix, self.front) * calibration["sub"]
         return out
 
-    def send_signal(self, src: Sources, scene: Scene, calibration: dict[str, float]) -> np.ndarray:
+    def send_signal(
+        self, src: Sources, scene: Scene, calibration: dict[str, float], bpm_norm: float
+    ) -> np.ndarray:
+        """送进混响的单声道信号：各轨送出量之和 × 分段混响量（逐块，与轨道同步过渡）。"""
         gains = effective_track_gains(scene)
         send = np.zeros(src.n)
         for name in TRACKS:
-            level = scene.tracks[name].reverb_send * gains[name] * calibration[name]
+            level = scene.mix[name].reverb_send * gains[name] * calibration[name]
             if level > 0:
                 x = src.hi[name]
                 send += level * (x if x.ndim == 1 else x.mean(axis=1))
-        return send
+        wet_db = wet_db_curve(scene, bpm_norm, src.n / src.sr, block_times(src.n, src.sr))
+        return send * np.repeat(10 ** (wet_db / 20), BLOCK)[: src.n]
 
     def reverb(self, send: np.ndarray, room: Room) -> np.ndarray:
         if not np.any(send):
             return np.zeros((len(send), 2))
         brir = self.brir(room.name).astype(np.float64)
-        wet = np.stack([oaconvolve(send, brir[ear])[: len(send)] for ear in (0, 1)], axis=1)
-        return wet * 10 ** (room.wet_db / 20)
+        return np.stack([oaconvolve(send, brir[ear])[: len(send)] for ear in (0, 1)], axis=1)
 
     def render_mix(self, src: Sources, scene: Scene, analysis: Analysis) -> np.ndarray:
         """未经母带的完整混音（干声 + 混响，已过补偿 EQ）。"""
         tracks = self.render_tracks(src, scene, analysis.bpm_norm, analysis.t_ref, analysis.calibration)
-        wet = self.reverb(self.send_signal(src, scene, analysis.calibration), scene.room)
+        wet = self.reverb(self.send_signal(src, scene, analysis.calibration, analysis.bpm_norm), scene.room)
         return apply_eq(sum(tracks.values()) + wet, self.eq)
 
     def export(self, src: Sources, scene: Scene, analysis: Analysis) -> np.ndarray:
@@ -192,7 +197,7 @@ class Renderer:
                 float(np.sqrt(targets[key] / rendered)) if rendered > EPS and targets[key] > EPS else 1.0
             )
         dry = sum(cal[key] * tracks[key] for key in CALIBRATION_KEYS)
-        mix = apply_eq(dry + self.reverb(self.send_signal(src, ref, cal), ref.room), self.eq)
+        mix = apply_eq(dry + self.reverb(self.send_signal(src, ref, cal, bpm_norm), ref.room), self.eq)
         return cal, master_gain(mix, src.sr)
 
 

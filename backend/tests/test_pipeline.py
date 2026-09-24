@@ -83,8 +83,8 @@ def test_calibration_restores_each_track_energy(renderer, analyzed):
 def test_sub_bass_stays_centered_while_everything_rotates(renderer, analyzed):
     *_, src, analysis = analyzed
     scene = preset("classic", analysis.default_bars)
-    scene.tracks["bass"].orbit.speed.mode = "seconds"
-    scene.tracks["bass"].orbit.speed.seconds = 2.0
+    scene.sections[0].orbits["bass"].speed.mode = "seconds"
+    scene.sections[0].orbits["bass"].speed.seconds = 2.0
     mix = renderer.render_mix(src, scene, analysis)
     low = np.fft.irfft(
         np.fft.rfft(mix, axis=0) * (np.fft.rfftfreq(len(mix), 1 / SR) < 100)[:, None], len(mix), axis=0
@@ -95,9 +95,9 @@ def test_sub_bass_stays_centered_while_everything_rotates(renderer, analyzed):
 def test_mute_removes_track_including_its_sub_bass(renderer, analyzed):
     *_, src, analysis = analyzed
     scene = Scene()
-    scene.room.wet_db = -24.0
+    scene.sections[0].wet_db = -24.0
     full = renderer.render_mix(src, scene, analysis)
-    scene.tracks["bass"].mute = True
+    scene.mix["bass"].mute = True
     muted = renderer.render_mix(src, scene, analysis)
     assert band_energy(muted, 40, 60) < band_energy(full, 40, 60) * 1e-3  # 若超低频没跟着静音，只会降约 15 dB
 
@@ -105,7 +105,7 @@ def test_mute_removes_track_including_its_sub_bass(renderer, analyzed):
 def test_solo_silences_other_tracks(renderer, analyzed):
     *_, src, analysis = analyzed
     scene = Scene()
-    scene.tracks["vocals"].solo = True
+    scene.mix["vocals"].solo = True
     tracks = renderer.render_tracks(src, scene, analysis.bpm_norm, analysis.t_ref, analysis.calibration)
     assert np.sum(tracks["drums"] ** 2) == 0 and np.sum(tracks["sub"] ** 2) == 0
     assert np.sum(tracks["vocals"] ** 2) > 0
@@ -114,7 +114,7 @@ def test_solo_silences_other_tracks(renderer, analyzed):
 def test_closer_orbit_is_louder(renderer, analyzed):
     *_, src, analysis = analyzed
     near, far = Scene(), Scene()
-    near.tracks["vocals"].orbit.radius_m, far.tracks["vocals"].orbit.radius_m = 0.5, 1.0
+    near.sections[0].orbits["vocals"].radius_m, far.sections[0].orbits["vocals"].radius_m = 0.5, 1.0
     e = [
         np.sum(
             renderer.render_tracks(src, s, analysis.bpm_norm, analysis.t_ref, analysis.calibration)["vocals"]
