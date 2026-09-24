@@ -9,7 +9,6 @@ export const HEAD_MODEL_URL = "/models/LeePerrySmith.glb";
 const MODEL_EAR_MID = new THREE.Vector3(-0.087, 1.504, -0.162);
 const MODEL_EAR_SPAN = 3.62;
 const TARGET_EAR_SPAN = 0.18; // 世界单位 ≈ 米
-export const EAR_HALF_SPAN = TARGET_EAR_SPAN / 2;
 
 const CLAY = { color: 0xd8d4cc, roughness: 0.66, metalness: 0.0 };
 
@@ -30,21 +29,6 @@ export async function loadHead(url = HEAD_MODEL_URL): Promise<THREE.Group> {
   head.position.copy(MODEL_EAR_MID).multiplyScalar(-scale);
   const group = new THREE.Group();
   group.name = "head";
-  group.add(head, earMarkers());
-  return group;
-}
-
-/** 两耳位置的小光点：听者右耳在世界 -x（模型面朝 +z）。 */
-function earMarkers(): THREE.Group {
-  const group = new THREE.Group();
-  const geo = new THREE.SphereGeometry(0.006, 16, 12);
-  for (const [x, color] of [
-    [-EAR_HALF_SPAN - 0.006, 0x7cf0c4],
-    [EAR_HALF_SPAN + 0.006, 0x7cb8f0],
-  ] as const) {
-    const dot = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 3 }));
-    dot.position.set(x, 0, 0);
-    group.add(dot);
-  }
+  group.add(head);
   return group;
 }

@@ -1,18 +1,15 @@
-// 3D 舞台：渲染器、相机、环境光照、轨道控制器、辉光后处理与逐帧回调。
+// 3D 舞台：渲染器、相机、环境光照、轨道控制器与逐帧回调。不做辉光后处理：声音位置用固定大小的实心色点表示。
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import type { FrameInfo } from "./orbits";
+import { spriteScaleForPixels } from "./mapping";
 
 const BACKGROUND = 0x0b0d12;
 const CAMERA_FOV = 34;
 const CAMERA_START = new THREE.Vector3(-1.55, 0.72, 2.05);
 const CAMERA_TARGET = new THREE.Vector3(0, 0.02, 0);
-const BLOOM = { strength: 0.85, radius: 0.5, threshold: 1.4 }; // 只让发光小球（亮度 > 1.4）泛光，白模不泛光
 const ENVIRONMENT_INTENSITY = 0.45;
 const DISTANCE_RINGS_M = [1, 2]; // 只留两圈参考距离，减少杂线
 const FLOOR_Y = -0.3; // 人头模型带肩膀，肩膀底部约在耳朵下方 0.27 处
@@ -25,8 +22,6 @@ export class Stage {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
   readonly controls: OrbitControls;
-  private readonly composer: EffectComposer;
-  private readonly bloom: UnrealBloomPass;
   private readonly callbacks = new Set<FrameCallback>();
   private readonly timer = new THREE.Timer();
   private readonly resizeObserver: ResizeObserver;
@@ -59,12 +54,6 @@ export class Stage {
     rim.position.set(1.8, 1.2, -2.2);
     this.scene.add(key, rim, new THREE.HemisphereLight(0xffffff, 0x20242e, 0.25));
     this.scene.add(this.buildFloor(ringRadius));
-
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), BLOOM.strength, BLOOM.radius, BLOOM.threshold);
-    this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -100,6 +89,12 @@ export class Stage {
     return () => this.callbacks.delete(cb);
   }
 
+  /** 画布的 CSS 像素尺寸与“1 像素对应的精灵缩放”（固定像素大小的点、线要用）。 */
+  frameInfo(): FrameInfo {
+    const { clientWidth: width, clientHeight: height } = this.renderer.domElement;
+    return { pixelScale: spriteScaleForPixels(1, this.camera.fov, height), width, height };
+  }
+
   resetView(): void {
     this.camera.position.copy(CAMERA_START);
     this.controls.target.copy(CAMERA_TARGET);
@@ -110,8 +105,6 @@ export class Stage {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (w === 0 || h === 0) return;
     this.renderer.setSize(w, h, false);
-    this.composer.setSize(w, h);
-    this.bloom.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -121,7 +114,7 @@ export class Stage {
     const dt = this.timer.getDelta();
     for (const cb of this.callbacks) cb(dt);
     this.controls.update();
-    this.composer.render();
+    this.renderer.render(this.scene, this.camera);
   }
 
   dispose(): void {

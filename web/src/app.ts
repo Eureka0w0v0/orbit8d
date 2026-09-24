@@ -448,7 +448,8 @@ export class App {
       this.section = k; // 播放头进入新的一段：轨道形状与面板跟着切换
       this.syncViews();
     }
-    for (const [track, view] of this.views) view.setPositions(this.motions[track], t);
+    const frame = this.stage.frameInfo();
+    for (const [track, view] of this.views) view.setPositions(this.motions[track], t, frame);
     this.handles.update();
     this.timeline.setTime(t);
     this.transport.update(t, this.engine.duration, this.engine.playing);

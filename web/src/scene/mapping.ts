@@ -25,6 +25,14 @@ export function radiusFromVisual(v: number): number {
   return clamp(MIN_R * (v / VISUAL_BASE) ** 2, MIN_R, MAX_R);
 }
 
+/**
+ * 固定像素大小的精灵（sizeAttenuation = false）要设的 scale：
+ * 透视投影下精灵高度 = scale / tan(fov/2) × 视口高 / 2 像素，反过来求 scale。
+ */
+export function spriteScaleForPixels(px: number, fovDeg: number, viewportHeightPx: number): number {
+  return (2 * px * Math.tan((fovDeg * DEG) / 2)) / Math.max(1, viewportHeightPx);
+}
+
 export function directionToWorld(azDeg: number, elDeg: number, out: Vec3 = { x: 0, y: 0, z: 0 }): Vec3 {
   const a = azDeg * DEG;
   const e = elDeg * DEG;

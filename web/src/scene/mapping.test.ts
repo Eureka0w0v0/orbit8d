@@ -6,6 +6,7 @@ import {
   orbitLocalAngle,
   phaseForLocalAngle,
   radiusFromVisual,
+  spriteScaleForPixels,
   visualRadius,
   worldToDirection,
 } from "./mapping";
@@ -65,5 +66,21 @@ describe("局部 → 世界", () => {
       const b = localToWorld(p, Math.sin(rad), 0, Math.cos(rad));
       expect(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)).toBeLessThan(1e-9);
     }
+  });
+});
+
+describe("固定像素大小的精灵", () => {
+  it("scale 投影回屏幕正好是要求的像素高", () => {
+    const fov = 34;
+    const height = 935;
+    const scale = spriteScaleForPixels(12, fov, height);
+    const projectedPx = (scale / Math.tan(((fov / 2) * Math.PI) / 180)) * (height / 2);
+    expect(projectedPx).toBeCloseTo(12, 9);
+  });
+
+  it("与像素数成正比、与视口高度成反比，视口为 0 时不除零", () => {
+    expect(spriteScaleForPixels(20, 34, 900)).toBeCloseTo(2 * spriteScaleForPixels(10, 34, 900), 12);
+    expect(spriteScaleForPixels(10, 34, 450)).toBeCloseTo(2 * spriteScaleForPixels(10, 34, 900), 12);
+    expect(Number.isFinite(spriteScaleForPixels(10, 34, 0))).toBe(true);
   });
 });
