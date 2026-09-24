@@ -59,7 +59,7 @@ OUTPUT_FORMATS: dict[str, OutputFormat] = {
 def _binary(name: str) -> str:
     path = shutil.which(name)
     if not path:
-        raise MediaError("FFMPEG_MISSING", f"找不到 {name}，请先安装 ffmpeg")
+        raise MediaError("FFMPEG_MISSING", f"{name} was not found; please install ffmpeg")
     return path
 
 
@@ -67,10 +67,10 @@ def _run(args: list[str], timeout: float, code: str) -> subprocess.CompletedProc
     try:
         proc = subprocess.run(args, capture_output=True, timeout=timeout, check=False)
     except subprocess.TimeoutExpired as exc:
-        raise MediaError(f"{code}_TIMEOUT", f"{Path(args[0]).name} 超时（>{timeout}s）") from exc
+        raise MediaError(f"{code}_TIMEOUT", f"{Path(args[0]).name} timed out (>{timeout}s)") from exc
     if proc.returncode != 0:
         tail = proc.stderr.decode("utf-8", "replace")[-STDERR_TAIL:].strip()
-        raise MediaError(code, tail or f"{Path(args[0]).name} 返回 {proc.returncode}")
+        raise MediaError(code, tail or f"{Path(args[0]).name} exited with {proc.returncode}")
     return proc
 
 
@@ -96,14 +96,14 @@ def probe(path: Path) -> ProbeInfo:
     try:
         data = json.loads(proc.stdout)
     except json.JSONDecodeError as exc:
-        raise MediaError("PROBE_FAILED", "ffprobe 输出无法解析") from exc
+        raise MediaError("PROBE_FAILED", "Could not parse the ffprobe output") from exc
     streams = data.get("streams", [])
     audio = [s for s in streams if s.get("codec_type") == "audio"]
     if not audio:
-        raise MediaError("NO_AUDIO", "文件里没有音频")
+        raise MediaError("NO_AUDIO", "The file has no audio stream")
     codec = audio[0].get("codec_name", "")
     if not _codec_allowed(codec):
-        raise MediaError("UNSUPPORTED_CODEC", f"不支持的音频编码: {codec}")
+        raise MediaError("UNSUPPORTED_CODEC", f"Unsupported audio codec: {codec}")
     fmt = data.get("format", {})
     # Ogg/Opus 等把标签存在音轨上，容器级标签优先
     tags = {k.lower(): v for k, v in (audio[0].get("tags") or {}).items()}
@@ -115,7 +115,7 @@ def probe(path: Path) -> ProbeInfo:
     try:
         duration = float(fmt.get("duration") or audio[0].get("duration"))
     except (TypeError, ValueError) as exc:
-        raise MediaError("PROBE_FAILED", "无法读取时长") from exc
+        raise MediaError("PROBE_FAILED", "Could not read the duration") from exc
     return ProbeInfo(
         format_name=fmt.get("format_name", ""),
         codec=codec,
@@ -180,7 +180,7 @@ def encode(src_wav: Path, dst: Path, fmt_key: str, meta: dict[str, str], cover_f
     fmt = OUTPUT_FORMATS.get(fmt_key)
     encoder = _encoder_for(fmt) if fmt else None
     if not fmt or not encoder:
-        raise MediaError("UNSUPPORTED_FORMAT", f"不支持的输出格式: {fmt_key}")
+        raise MediaError("UNSUPPORTED_FORMAT", f"Unsupported output format: {fmt_key}")
     args = [_binary("ffmpeg"), "-nostdin", "-v", "error", "-y", "-i", str(src_wav)]
     with_cover = fmt.cover and cover_from is not None and probe(cover_from).has_cover
     if with_cover:

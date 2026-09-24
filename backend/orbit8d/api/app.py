@@ -75,7 +75,7 @@ class LocalOriginMiddleware:
         if scope["type"] == "http" and scope["method"] not in SAFE_METHODS:
             origin = dict(scope["headers"]).get(b"origin")
             if origin is not None and origin.decode("latin-1") not in self.allowed:
-                body = {"code": "FORBIDDEN_ORIGIN", "message": "拒绝跨站请求"}
+                body = {"code": "FORBIDDEN_ORIGIN", "message": "Cross-site request refused"}
                 await JSONResponse(body, status_code=403)(scope, receive, send)
                 return
         await self.app(scope, receive, send)
@@ -124,7 +124,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
 
     @app.exception_handler(NotFound)
     async def _not_found(_: Request, exc: NotFound) -> JSONResponse:
-        return JSONResponse({"code": "NOT_FOUND", "message": "不存在"}, status_code=404)
+        return JSONResponse({"code": "NOT_FOUND", "message": "Not found"}, status_code=404)
 
     @app.get("/api/health")
     def health() -> dict:
@@ -139,7 +139,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         if name not in PRESETS:
             raise NotFound(name)
         if bars not in BAR_CHOICES:
-            raise ApiError(422, "BAD_BARS", f"bars 只能是 {BAR_CHOICES}")
+            raise ApiError(422, "BAD_BARS", f"bars must be one of {BAR_CHOICES}")
         return preset(name, bars).model_dump(mode="json")
 
     @app.get("/api/scene/schema")
@@ -150,7 +150,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     async def create_project(request: Request) -> JSONResponse:
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > settings.max_upload_bytes:
-            raise ApiError(413, "TOO_LARGE", "文件太大")
+            raise ApiError(413, "TOO_LARGE", "The file is too large")
         name = safe_name(Path(unquote(request.headers.get(FILENAME_HEADER, ""))).name)
         tmp = settings.uploads_dir / f"{uuid.uuid4().hex}.part"
         digest, size = hashlib.sha256(), 0
@@ -159,11 +159,11 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
                 async for chunk in request.stream():
                     size += len(chunk)
                     if size > settings.max_upload_bytes:
-                        raise ApiError(413, "TOO_LARGE", "文件太大")
+                        raise ApiError(413, "TOO_LARGE", "The file is too large")
                     digest.update(chunk)
                     f.write(chunk)
             if size == 0:
-                raise ApiError(400, "EMPTY", "空文件")
+                raise ApiError(400, "EMPTY", "The file is empty")
             pid = digest.hexdigest()[:ID_LEN]
             existing = store.find_project(pid)
             if existing:
@@ -172,7 +172,9 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
                 return JSONResponse(existing.to_dict(), status_code=200)
             info = await run_in_threadpool(probe, tmp)
             if info.duration_s > settings.max_duration_s:
-                raise ApiError(400, "TOO_LONG", f"歌曲超过 {settings.max_duration_s / 60:.0f} 分钟")
+                raise ApiError(
+                    400, "TOO_LONG", f"The song is longer than {settings.max_duration_s / 60:.0f} minutes"
+                )
             store.project_dir(pid).mkdir(parents=True, exist_ok=True)
             tmp.replace(store.project_dir(pid) / SOURCE_FILE)
             rec, created = store.create_project_if_absent(
@@ -206,7 +208,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     def ready_analysis(pid: str) -> Analysis:
         rec = store.get_project(pid)
         if rec.state is not ProjectState.READY:
-            raise ApiError(409, "PROJECT_NOT_READY", "还在处理中")
+            raise ApiError(409, "PROJECT_NOT_READY", "Still processing")
         return Analysis(**rec.analysis)
 
     @app.get("/api/projects/{pid}/choreography")
@@ -230,12 +232,12 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         ready_analysis(pid)
         text = store.load_scene(pid)
         if text is None:
-            raise ApiError(404, "NO_SAVED_SCENE", "这首歌还没有保存过场景")
+            raise ApiError(404, "NO_SAVED_SCENE", "No scene has been saved for this song")
         try:
             return Scene.model_validate_json(text).model_dump(mode="json")
         except ValidationError:
             log.warning("saved scene is invalid", extra={"event": "scene.invalid", "project_id": pid})
-            raise ApiError(404, "NO_SAVED_SCENE", "保存的场景已不可用") from None
+            raise ApiError(404, "NO_SAVED_SCENE", "The saved scene is no longer valid") from None
 
     @app.put("/api/projects/{pid}/scene", status_code=204)
     async def put_scene(request: Request, pid: str) -> Response:
@@ -243,17 +245,17 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         ready_analysis(pid)
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > MAX_SCENE_BYTES:
-            raise ApiError(413, "TOO_LARGE", "场景数据太大")
+            raise ApiError(413, "TOO_LARGE", "The scene is too large")
         raw = await request.body()
         if len(raw) > MAX_SCENE_BYTES:
-            raise ApiError(413, "TOO_LARGE", "场景数据太大")
+            raise ApiError(413, "TOO_LARGE", "The scene is too large")
         try:
             scene = Scene.model_validate_json(raw)
         except ValidationError as exc:
             first = exc.errors()[0]
             where = ".".join(str(p) for p in first.get("loc", ()))
             raise ApiError(
-                422, "INVALID_SCENE", f"场景参数不合法：{where} {first.get('msg', '')}".strip()
+                422, "INVALID_SCENE", f"Invalid scene: {where} {first.get('msg', '')}".strip()
             ) from None
         store.save_scene(pid, canonical_json(scene))
         log.info("scene saved", extra={"event": "scene.save", "project_id": pid, "bytes": len(raw)})
@@ -265,7 +267,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         if name not in PREVIEW_NAMES:
             raise NotFound(name)
         if rec.state is not ProjectState.READY:
-            raise ApiError(409, "PROJECT_NOT_READY", "还在处理中")
+            raise ApiError(409, "PROJECT_NOT_READY", "Still processing")
         return FileResponse(store.project_dir(pid) / PREVIEW_DIR / f"{name}.flac", media_type="audio/flac")
 
     @app.get("/api/assets/hrtf.bin")
@@ -293,9 +295,9 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     def create_export(request: Request, pid: str, body: ExportRequest) -> JSONResponse:
         project = store.get_project(pid)
         if project.state is not ProjectState.READY:
-            raise ApiError(409, "PROJECT_NOT_READY", "还在处理中")
+            raise ApiError(409, "PROJECT_NOT_READY", "Still processing")
         if body.format not in available_formats():
-            raise ApiError(422, "UNSUPPORTED_FORMAT", f"本机 ffmpeg 不支持 {body.format}")
+            raise ApiError(422, "UNSUPPORTED_FORMAT", f"The local ffmpeg cannot encode {body.format}")
         key = f"v{RENDER_VERSION}|{pid}|{canonical_json(body.scene)}|{body.format}"
         eid = hashlib.sha256(key.encode()).hexdigest()[:ID_LEN]
         rec, created = store.create_export_if_absent(
@@ -322,7 +324,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     def get_export_file(eid: str) -> FileResponse:
         rec = store.get_export(eid)
         if rec.state is not ExportState.DONE:
-            raise ApiError(409, "EXPORT_NOT_READY", "还没导出完成")
+            raise ApiError(409, "EXPORT_NOT_READY", "The export is not finished yet")
         fmt = OUTPUT_FORMATS[rec.format]
         return FileResponse(
             store.export_dir(eid) / f"output.{fmt.ext}", media_type=fmt.mime, filename=rec.file_name

@@ -222,8 +222,12 @@ class Store:
         for path in self.settings.projects_dir.glob(f"*/{RECORD_FILE}"):
             rec = ProjectRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
             if not is_terminal(rec.state):
-                self.fail_project(rec.id, INTERRUPTED, "上次处理被中断，重新导入即可重试")
+                self.fail_project(
+                    rec.id, INTERRUPTED, "The last run was interrupted; import the song again to retry"
+                )
         for path in self.settings.exports_dir.glob(f"*/{RECORD_FILE}"):
             rec = ExportRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
             if not is_terminal(rec.state):
-                self.fail_export(rec.id, INTERRUPTED, "上次导出被中断，重新导出即可")
+                self.fail_export(
+                    rec.id, INTERRUPTED, "The last export was interrupted; export again to retry"
+                )
