@@ -1,5 +1,7 @@
 // 极简 DOM 构造工具 + 通用控件（滑杆、分段选择）。不引入 UI 框架。
 
+import { T } from "../i18n";
+
 type Child = Node | string | null | undefined | false;
 type Attrs = Record<string, string | number | boolean | EventListener | undefined>;
 
@@ -92,7 +94,7 @@ export const fmt = {
   deg: (v: number) => `${Math.round(v)}°`,
   db: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`,
   meters: (v: number) => `${v.toFixed(2)} m`,
-  seconds: (v: number) => `${v.toFixed(1)} 秒/圈`,
+  seconds: (v: number) => T.unit.secondsPerTurn(v.toFixed(1)),
   ratio: (v: number) => v.toFixed(2),
   percent: (v: number) => `${Math.round(v * 100)}%`,
   clock: (s: number) => {

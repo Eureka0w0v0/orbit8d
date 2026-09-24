@@ -138,7 +138,7 @@ export class AudioEngine {
   }
 
   private post(msg: WorkletMessage): void {
-    if (!this.node) throw new Error("音频引擎还没初始化");
+    if (!this.node) throw new Error("Audio engine is not initialised");
     this.node.port.postMessage(msg);
   }
 

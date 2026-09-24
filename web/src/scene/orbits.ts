@@ -61,7 +61,7 @@ function dotTexture(color: number, selected: boolean): THREE.CanvasTexture {
   canvas.width = DOT_TEXTURE_PX;
   canvas.height = DOT_TEXTURE_PX;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("无法创建 2D 画布");
+  if (!ctx) throw new Error("2D canvas is not available");
   const c = DOT_TEXTURE_PX / 2;
   const disc = (r: number, fill: string) => {
     ctx.beginPath();
@@ -128,10 +128,12 @@ export class OrbitView {
     this.arc.visible = false;
     this.arc.raycast = () => undefined; // 弧不参与点选
     this.group.add(this.dot, this.arc);
+    this.group.visible = false; // 还没有场景时不画：否则色点按默认缩放会铺满整个屏幕
   }
 
   update(state: OrbitViewState): void {
     this.state = state;
+    this.group.visible = true;
     const key = JSON.stringify({ ...state.params, startDeg: 0, periodS: 0, direction: 0, sel: state.selected });
     if (key !== this.pathKey) {
       this.pathKey = key;

@@ -13,7 +13,9 @@ const EVENT_BARS: Record<EventKind, number> = { hold: 1, overhead: 2 };
 const MAX_EVENT_S = 30;
 const MIN_EVENT_S = 0.5;
 
-export type EditResult = { ok: true; scene: Scene } | { ok: false; reason: string };
+/** 不合法操作的原因（界面按当前语言显示，见 i18n 的 edit）。 */
+export type EditReason = "maxSections" | "tooClose" | "lastSection" | "maxEvents" | "holdExists" | "overheadExists";
+export type EditResult = { ok: true; scene: Scene } | { ok: false; reason: EditReason };
 
 /** 小节线：first + k·bar（与后端 structure.bar_starts 同相位）。 */
 export interface BarGrid {
@@ -47,12 +49,12 @@ export function sectionEnd(scene: Scene, k: number, durationS: number): number {
 }
 
 export function splitAt(scene: Scene, t: number, grid: BarGrid, durationS: number): EditResult {
-  if (scene.sections.length >= MAX_SECTIONS) return { ok: false, reason: `最多 ${MAX_SECTIONS} 段` };
+  if (scene.sections.length >= MAX_SECTIONS) return { ok: false, reason: "maxSections" };
   const k = sectionIndexAt(scene, t);
   const at = snapToBar(grid, t);
   const minGap = MIN_SECTION_BARS * grid.bar * 0.999;
   if (at - scene.sections[k].start_s < minGap || sectionEnd(scene, k, durationS) - at < minGap) {
-    return { ok: false, reason: "离段落边界太近（每段至少 1 小节）" };
+    return { ok: false, reason: "tooClose" };
   }
   const next = structuredClone(scene);
   next.sections.splice(k + 1, 0, { ...structuredClone(scene.sections[k]), start_s: at });
@@ -60,7 +62,7 @@ export function splitAt(scene: Scene, t: number, grid: BarGrid, durationS: numbe
 }
 
 export function removeSection(scene: Scene, k: number): EditResult {
-  if (scene.sections.length <= 1) return { ok: false, reason: "只剩一段了" };
+  if (scene.sections.length <= 1) return { ok: false, reason: "lastSection" };
   const next = structuredClone(scene);
   if (k === 0) next.sections[1].start_s = 0; // 删第一段：后一段往前接到 0 秒
   next.sections.splice(k, 1);
@@ -86,7 +88,7 @@ function span(e: SceneEvent): [number, number] {
 }
 
 export function addEvent(scene: Scene, kind: EventKind, t: number, track: TrackName, grid: BarGrid): EditResult {
-  if (scene.events.length >= MAX_EVENTS) return { ok: false, reason: `最多 ${MAX_EVENTS} 个事件` };
+  if (scene.events.length >= MAX_EVENTS) return { ok: false, reason: "maxEvents" };
   const event: SceneEvent = {
     t_s: Math.max(0, t),
     kind,
@@ -99,7 +101,7 @@ export function addEvent(scene: Scene, kind: EventKind, t: number, track: TrackN
     const [b0, b1] = span(e);
     return a0 < b1 && b0 < a1;
   });
-  if (clash) return { ok: false, reason: kind === "hold" ? "这里已经有停顿了" : "这里已经在飞过头顶了" };
+  if (clash) return { ok: false, reason: kind === "hold" ? "holdExists" : "overheadExists" };
   const next = structuredClone(scene);
   next.events.push(event);
   next.events.sort((x, y) => x.t_s - y.t_s);

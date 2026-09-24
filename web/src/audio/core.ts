@@ -50,7 +50,7 @@ export class BinauralCore {
   private params: RenderParams | null = null;
 
   constructor(table: HrtfTable, sampleRate: number) {
-    if (table.sampleRate !== sampleRate) throw new Error(`HRTF 采样率 ${table.sampleRate} ≠ 音频 ${sampleRate}`);
+    if (table.sampleRate !== sampleRate) throw new Error(`HRTF sample rate ${table.sampleRate} != audio ${sampleRate}`);
     this.table = table;
     this.sampleRate = sampleRate;
     this.taps = table.taps;

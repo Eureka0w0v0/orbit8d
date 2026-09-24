@@ -2,6 +2,7 @@
 // 选中音轨所在的层会微微亮起。按选中音轨的可视半径缩放，使其轨道贴在球面上。
 
 import * as THREE from "three";
+import { T } from "../i18n";
 import { LAYERS, type LayerName } from "./layers";
 import { directionToWorld } from "./mapping";
 
@@ -18,8 +19,8 @@ function textSprite(text: string, color: string): THREE.Sprite {
   canvas.width = 256;
   canvas.height = 64;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("无法创建 2D 画布");
-  ctx.font = "600 30px -apple-system, 'PingFang SC', sans-serif";
+  if (!ctx) throw new Error("2D canvas is not available");
+  ctx.font = `600 30px ${T.fontStack}`;
   ctx.fillStyle = color;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -65,7 +66,7 @@ export class Dome {
       band.renderOrder = -1;
       this.bands.set(layer.name, material);
       const mid = directionToWorld(LABEL_AZ, (layer.from + layer.to) / 2);
-      const label = textSprite(layer.label, hex(layer.color));
+      const label = textSprite(T.layer[layer.name], hex(layer.color));
       label.position.set(mid.x, mid.y, mid.z).multiplyScalar(1.07);
       this.labels.set(layer.name, label.material);
       this.group.add(band, label);

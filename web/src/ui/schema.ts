@@ -22,7 +22,7 @@ export class SchemaRanges {
 
   static from(raw: Record<string, unknown>): SchemaRanges {
     const s = raw as unknown as SceneSchema;
-    if (!s.$defs || !s.properties) throw new Error("场景参数表格式不对");
+    if (!s.$defs || !s.properties) throw new Error("Unexpected scene schema format");
     return new SchemaRanges(s);
   }
 
@@ -30,7 +30,7 @@ export class SchemaRanges {
   of(def: SchemaDef | null, prop: string): Range {
     const props = def ? this.schema.$defs[def]?.properties : this.schema.properties;
     const p = props?.[prop];
-    if (p?.minimum === undefined || p.maximum === undefined) throw new Error(`参数表缺少 ${def ?? "Scene"}.${prop} 的范围`);
+    if (p?.minimum === undefined || p.maximum === undefined) throw new Error(`Scene schema has no range for ${def ?? "Scene"}.${prop}`);
     return { min: p.minimum, max: p.maximum };
   }
 }

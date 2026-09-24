@@ -18,7 +18,7 @@ export async function loadHead(url = HEAD_MODEL_URL): Promise<THREE.Group> {
   gltf.scene.traverse((obj) => {
     if (!mesh && (obj as THREE.Mesh).isMesh) mesh = obj as THREE.Mesh;
   });
-  if (!mesh) throw new Error("人头模型里没有网格");
+  if (!mesh) throw new Error("The head model contains no mesh");
   const head = mesh as THREE.Mesh;
   head.material = new THREE.MeshStandardMaterial(CLAY);
   head.geometry.computeVertexNormals();

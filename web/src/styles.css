@@ -106,6 +106,28 @@ button.icon:disabled {
   opacity: 0.35;
   cursor: default;
 }
+.lang-select {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--panel-border);
+  border-radius: 9px;
+  padding: 5px 6px;
+  cursor: pointer;
+}
+.lang-select option {
+  color: #111;
+}
+.drop-lang {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .save-status {
   min-width: 64px;
   font-size: 11px;
@@ -237,6 +259,11 @@ body:not([data-phase="ready"]) .panel {
 .preset {
   padding: 9px 6px;
 }
+/* 日文按钮只在空格和 \u200b 处换行，不把“サラウンド”“セクション”这类词拆开 */
+html:lang(ja) .preset,
+html:lang(ja) .button-row button {
+  word-break: keep-all;
+}
 .preset.auto {
   grid-column: span 2;
   background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 45%, transparent), color-mix(in srgb, var(--accent-2) 45%, transparent));
@@ -301,8 +328,20 @@ input[type="range"] {
   border: none;
   background: transparent;
   padding: 6px 8px;
-  white-space: nowrap;
+  line-height: 1.25;
+  white-space: normal; /* 英文、日文比中文长，放不下就在空格处折成两行，不溢出面板 */
   color: var(--muted);
+}
+.segmented.grid3 button,
+.segmented.grid2 button,
+.segmented.stack button {
+  padding: 6px 4px;
+  font-size: 12px;
+}
+.segmented.tabs button {
+  white-space: nowrap;
+  flex: 1 1 auto; /* 按文字宽度分配：日文“セクション”较长 */
+  padding: 6px 4px;
 }
 .segmented button.on {
   background: rgba(143, 157, 255, 0.22);

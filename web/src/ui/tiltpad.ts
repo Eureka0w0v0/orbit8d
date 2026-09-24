@@ -1,6 +1,7 @@
 // 倾斜盘：俯视人头（上 = 正前）。白点所在方向 = 轨道最高点朝向，离圆心越远翘得越高（边缘 = 90° 竖直）。
 // 双击回到水平。只负责交互与显示，换算见 orbit/orientation.ts。
 
+import { T } from "../i18n";
 import type { Tilt } from "../orbit/orientation";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -24,11 +25,11 @@ export class TiltPad {
 
   constructor(private readonly onChange: (t: Tilt) => void) {
     const half = SIZE / 2;
-    this.el = el("svg", { viewBox: `${-half} ${-half} ${SIZE} ${SIZE}`, class: "tiltpad", role: "slider", "aria-label": "轨道倾斜" });
+    this.el = el("svg", { viewBox: `${-half} ${-half} ${SIZE} ${SIZE}`, class: "tiltpad", role: "slider", "aria-label": T.pad.label });
     this.el.append(el("circle", { cx: 0, cy: 0, r: R, class: "pad-ring" }));
     for (const deg of GUIDE_DEGS) this.el.append(el("circle", { cx: 0, cy: 0, r: (R * deg) / 90, class: "pad-guide" }));
     this.el.append(el("line", { x1: -R, y1: 0, x2: R, y2: 0, class: "pad-guide" }), el("line", { x1: 0, y1: -R, x2: 0, y2: R, class: "pad-guide" }));
-    for (const [text, x, y] of [["前", 0, -R - 5], ["后", 0, R + 9], ["左", -R - 8, 3], ["右", R + 8, 3]] as const) {
+    for (const [text, x, y] of [[T.pad.front, 0, -R - 5], [T.pad.back, 0, R + 9], [T.pad.left, -R - 8, 3], [T.pad.right, R + 8, 3]] as const) {
       const label = el("text", { x, y, class: "pad-label", "text-anchor": "middle" });
       label.textContent = text;
       this.el.append(label);

@@ -18,12 +18,13 @@ export interface Orientation {
   yaw_deg: number;
 }
 
-export const DIRECTIONS: ReadonlyArray<{ key: string; label: string; tilt: Tilt }> = [
-  { key: "horizontal", label: "水平", tilt: { azDeg: 0, tiltDeg: 0 } },
-  { key: "ears", label: "竖·左右", tilt: { azDeg: 0, tiltDeg: 90 } },
-  { key: "frontBack", label: "竖·前后", tilt: { azDeg: 90, tiltDeg: 90 } },
-  { key: "diagRight", label: "斜 ↗", tilt: { azDeg: 45, tiltDeg: 45 } },
-  { key: "diagLeft", label: "斜 ↖", tilt: { azDeg: -45, tiltDeg: 45 } },
+/** 朝向快捷键（显示名见 i18n 的 direction）。 */
+export const DIRECTIONS: ReadonlyArray<{ key: string; tilt: Tilt }> = [
+  { key: "horizontal", tilt: { azDeg: 0, tiltDeg: 0 } },
+  { key: "ears", tilt: { azDeg: 0, tiltDeg: 90 } },
+  { key: "frontBack", tilt: { azDeg: 90, tiltDeg: 90 } },
+  { key: "diagRight", tilt: { azDeg: 45, tiltDeg: 45 } },
+  { key: "diagLeft", tilt: { azDeg: -45, tiltDeg: 45 } },
 ];
 
 const wrap180 = (d: number) => {

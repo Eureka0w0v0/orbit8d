@@ -1,12 +1,21 @@
 // 播放条、导入/进度弹层、导出对话框。
 
 import type { ListenMode } from "../audio/engine";
+import { LANGS, LANG_NAMES, lang, type Lang } from "../i18n";
 import type { ExportFormat } from "../types";
 import { fmt, h } from "./dom";
 import { FORMAT_LABEL, TEXT } from "./labels";
 
 const METER_RANGE_DB = 60;
 const ACCEPT = "audio/*,.mp3,.m4a,.aac,.flac,.wav,.aiff,.aif,.ogg,.opus";
+
+/** 语言下拉框（中文 / 日本語 / English），选了就交给 onPick（记住并刷新页面）。 */
+export function languageSelect(onPick: (next: Lang) => void): HTMLSelectElement {
+  const select = h("select", { class: "lang-select", title: TEXT.language, "aria-label": TEXT.language });
+  for (const l of LANGS) select.append(h("option", { value: l, selected: l === lang }, LANG_NAMES[l]));
+  select.addEventListener("change", () => onPick(select.value as Lang));
+  return select;
+}
 
 export class Transport {
   readonly el: HTMLElement;
@@ -19,20 +28,20 @@ export class Transport {
 
   /** timeline：代替进度条的时间轴（段落 + 事件 + 播放头）；onListen：切换 8D / 原曲。 */
   constructor(onToggle: () => void, timeline: HTMLElement, onListen: () => void) {
-    this.play = h("button", { type: "button", class: "play", title: `${TEXT.play}（空格）` }, "▶");
+    this.play = h("button", { type: "button", class: "play", title: `${TEXT.play} (${TEXT.spaceKey})` }, "▶");
     this.play.addEventListener("click", onToggle);
     this.listen = h("button", { type: "button", class: "listen", title: TEXT.listenTitle }, TEXT.listen8d);
     this.listen.addEventListener("click", onListen);
     this.time = h("span", { class: "time" }, "0:00 / 0:00");
     this.info = h("span", { class: "info" });
     this.meterBars = [h("div", { class: "lvl" }), h("div", { class: "lvl" })];
-    this.meter = h("div", { class: "meter", title: "左 / 右耳电平" }, h("span", {}, "L"), h("div", { class: "track" }, this.meterBars[0]), h("span", {}, "R"), h("div", { class: "track" }, this.meterBars[1]));
+    this.meter = h("div", { class: "meter", title: TEXT.meterTitle }, h("span", {}, "L"), h("div", { class: "track" }, this.meterBars[0]), h("span", {}, "R"), h("div", { class: "track" }, this.meterBars[1]));
     this.el = h("footer", { class: "transport" }, this.play, this.listen, this.time, timeline, this.info, this.meter, h("span", { class: "phones" }, `🎧 ${TEXT.headphones}`));
   }
 
   update(t: number, duration: number, playing: boolean): void {
     this.play.textContent = playing ? "❚❚" : "▶";
-    this.play.title = `${playing ? TEXT.pause : TEXT.play}（空格）`;
+    this.play.title = `${playing ? TEXT.pause : TEXT.play} (${TEXT.spaceKey})`;
     this.time.textContent = `${fmt.clock(t)} / ${fmt.clock(duration)}`;
   }
 
@@ -62,7 +71,10 @@ export class Overlay {
   private readonly card: HTMLDivElement;
   private readonly picker: HTMLInputElement;
 
-  constructor(onFile: (file: File) => void) {
+  constructor(
+    onFile: (file: File) => void,
+    private readonly onLanguage: (next: Lang) => void,
+  ) {
     this.picker = h("input", { type: "file", accept: ACCEPT, class: "hidden" });
     this.picker.addEventListener("change", () => {
       const file = this.picker.files?.[0];
@@ -93,7 +105,8 @@ export class Overlay {
   showDrop(): void {
     this.el.classList.remove("hidden");
     const zone = h("button", { type: "button", class: "dropzone", onclick: () => this.pickFile() }, h("div", { class: "drop-icon" }, "♫"), h("h1", {}, TEXT.dropTitle), h("p", {}, TEXT.dropHint));
-    this.card.replaceChildren(zone);
+    const language = h("label", { class: "drop-lang" }, h("span", {}, `🌐 ${TEXT.language}`), languageSelect(this.onLanguage));
+    this.card.replaceChildren(zone, language);
   }
 
   showProgress(title: string, fraction: number | null, detail = ""): void {
@@ -105,7 +118,7 @@ export class Overlay {
   showError(message: string): void {
     this.el.classList.remove("hidden");
     this.card.replaceChildren(
-      h("div", { class: "progress error" }, h("h1", {}, "出错了"), h("p", {}, message), h("button", { type: "button", onclick: () => this.pickFile() }, TEXT.retry)),
+      h("div", { class: "progress error" }, h("h1", {}, TEXT.errorTitle), h("p", {}, message), h("button", { type: "button", onclick: () => this.pickFile() }, TEXT.retry)),
     );
   }
 

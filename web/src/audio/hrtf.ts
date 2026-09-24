@@ -25,11 +25,11 @@ interface HrtfHeader {
 
 export function parseHrtf(buffer: ArrayBuffer): HrtfTable {
   const bytes = new Uint8Array(buffer);
-  if (String.fromCharCode(...bytes.subarray(0, 4)) !== MAGIC) throw new Error("不是 Orbit 8D 的 HRTF 数据");
+  if (String.fromCharCode(...bytes.subarray(0, 4)) !== MAGIC) throw new Error("Not an Orbit 8D HRTF table");
   const headerLen = new DataView(buffer).getUint32(4, true);
   const header = JSON.parse(new TextDecoder().decode(bytes.subarray(HEADER_OFFSET, HEADER_OFFSET + headerLen))) as HrtfHeader;
   if (header.version !== FORMAT_VERSION || header.layout !== "el,az,ear,tap") {
-    throw new Error(`不支持的 HRTF 数据版本: ${header.version}`);
+    throw new Error(`Unsupported HRTF table version: ${header.version}`);
   }
   const count = header.el_nodes.length * header.n_az * 2 * header.taps;
   const data = new Float32Array(buffer, HEADER_OFFSET + headerLen, count);

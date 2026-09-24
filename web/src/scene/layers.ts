@@ -5,7 +5,6 @@ export type LayerName = "surround" | "height" | "top";
 
 export interface Layer {
   name: LayerName;
-  label: string;
   from: number; // 仰角下界（度）
   to: number; // 仰角上界（度）
   center: number; // 一键换层时设置的高度
@@ -13,9 +12,9 @@ export interface Layer {
 }
 
 export const LAYERS: readonly Layer[] = [
-  { name: "surround", label: "环绕层", from: -15, to: 15, center: 0, color: 0x4aa8ff },
-  { name: "height", label: "高度层", from: 15, to: 60, center: 35, color: 0xffa23a },
-  { name: "top", label: "顶层", from: 60, to: 90, center: 75, color: 0xff5468 },
+  { name: "surround", from: -15, to: 15, center: 0, color: 0x4aa8ff },
+  { name: "height", from: 15, to: 60, center: 35, color: 0xffa23a },
+  { name: "top", from: 60, to: 90, center: 75, color: 0xff5468 },
 ];
 
 /** 环绕层含两端；其余层含上界不含下界。低于 -15° 不属于任何层。 */

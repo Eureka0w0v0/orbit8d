@@ -89,7 +89,7 @@ export const api = {
       xhr.setRequestHeader("Content-Type", "application/octet-stream");
       xhr.setRequestHeader("X-Filename", encodeURIComponent(file.name));
       xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
-      xhr.onerror = () => reject(new ApiError(0, "NETWORK", "连不上本地服务，请确认 Orbit 8D 后台在运行"));
+      xhr.onerror = () => reject(new ApiError(0, "NETWORK", "Cannot reach the local Orbit 8D service"));
       xhr.onload = () => {
         let body: unknown = null;
         try {
@@ -100,7 +100,7 @@ export const api = {
         if (xhr.status >= 200 && xhr.status < 300) resolve(body as Project);
         else {
           const err = (body ?? {}) as Partial<ApiErrorBody>;
-          reject(new ApiError(xhr.status, err.code ?? `HTTP_${xhr.status}`, err.message ?? "上传失败"));
+          reject(new ApiError(xhr.status, err.code ?? `HTTP_${xhr.status}`, err.message ?? "Upload failed"));
         }
       };
       xhr.send(file);

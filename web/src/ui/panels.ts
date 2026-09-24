@@ -2,6 +2,7 @@
 // 轨道参数改的是“播放头所在的那一段”；混音、房间是全曲共用的。面板只负责显示与收集操作，改数据统一交给 App。
 
 import { effectiveTrackGains } from "../audio/params";
+import { T, directionName, presetName, sectionName } from "../i18n";
 import { BEATS_PER_BAR } from "../orbit/orbit";
 import { DIRECTIONS, matchDirection, orientationFromTilt, tiltFromOrientation } from "../orbit/orientation";
 import { eventsIn, sectionEnd } from "../scene/edit";
@@ -15,7 +16,6 @@ import {
   DEFAULT_SECTION_COLOR,
   EVENT_LABEL,
   PARAM_LABEL,
-  PRESET_LABEL,
   ROOM_LABEL,
   SECTION_COLORS,
   SECTION_LABELS,
@@ -109,7 +109,7 @@ export class TracksPanel {
     const auto = h("button", { type: "button", class: "preset auto", title: TEXT.autoChoreoTitle, onclick: () => actions.autoChoreograph() }, TEXT.autoChoreo);
     const presetBox = h("div", { class: "presets" }, auto);
     for (const p of presets) {
-      presetBox.append(h("button", { type: "button", class: "preset", onclick: () => actions.applyPreset(p) }, PRESET_LABEL[p] ?? p));
+      presetBox.append(h("button", { type: "button", class: "preset", onclick: () => actions.applyPreset(p) }, presetName(p)));
     }
     this.scope = h("p", { class: "hint scope" });
     this.el = h("aside", { class: "panel left" }, h("h2", {}, TEXT.tracks), list, h("h2", {}, TEXT.presets), presetBox, this.scope);
@@ -127,7 +127,7 @@ export class TracksPanel {
     }
     const multi = ctx.scene.sections.length > 1;
     this.scope.classList.toggle("hidden", !multi);
-    if (multi) this.scope.textContent = `${TEXT.presetScope}（${ctx.scene.sections[ctx.section].label}）`;
+    if (multi) this.scope.textContent = TEXT.presetScope(sectionName(ctx.scene.sections[ctx.section].label));
   }
 }
 
@@ -208,7 +208,7 @@ export class OrbitPanel {
       { class: "panel-head", style: `--track:${cssColor(TRACK_COLORS[ctx.track])}` },
       h("span", { class: "dot" }),
       h("span", { class: "panel-title" }, TRACK_LABEL[ctx.track]),
-      h("span", { class: "section-chip", style: `--c:${sectionColor(label)}` }, label),
+      h("span", { class: "section-chip", style: `--c:${sectionColor(label)}` }, sectionName(label)),
     );
     const tabs = segmented(TABS, this.tab, (t) => this.switchTab(t), "tabs");
     const content =
@@ -235,14 +235,14 @@ export class OrbitPanel {
     ];
 
     this.layerBox = segmented(
-      [...LAYERS].reverse().map((l) => ({ value: l.name, label: l.label })),
+      [...LAYERS].reverse().map((l) => ({ value: l.name, label: T.layer[l.name] })),
       layerOf(o.height_deg) ?? "",
       (name) => setO({ height_deg: LAYERS.find((l) => l.name === name)!.center }),
       "stack",
     );
     if (moving) {
       this.directionBox = segmented(
-        DIRECTIONS.map((d) => ({ value: d.key, label: d.label })),
+        DIRECTIONS.map((d) => ({ value: d.key, label: directionName(d.key) })),
         matchDirection(o) ?? "",
         (key) => setO(orientationFromTilt(DIRECTIONS.find((d) => d.key === key)!.tilt)),
         "grid3",
@@ -282,7 +282,7 @@ export class OrbitPanel {
         ),
         o.speed.mode === "bars"
           ? segmented(
-              BAR_CHOICES.map((b) => ({ value: b, label: `${b} ${TEXT.bars} · ${barSeconds(b).toFixed(1)}s` })),
+              BAR_CHOICES.map((b) => ({ value: b, label: `${T.unit.bars(b)} · ${barSeconds(b).toFixed(1)}s` })),
               o.speed.bars,
               (b) => a.setSpeed(track, { bars: b }),
               "grid2",
@@ -336,16 +336,16 @@ export class OrbitPanel {
               "div",
               { class: `event-row ${event.kind}` },
               h("span", { class: "event-kind" }, EVENT_LABEL[event.kind]),
-              h("span", { class: "event-meta" }, `${fmt.clock(event.t_s)} · ${event.targets.map((t) => TRACK_LABEL[t]).join("、")}`),
-              h("button", { type: "button", class: "chip", title: "删除", onclick: () => a.removeEvent(index) }, "×"),
+              h("span", { class: "event-meta" }, `${fmt.clock(event.t_s)} · ${event.targets.map((t) => TRACK_LABEL[t]).join(TEXT.listSep)}`),
+              h("button", { type: "button", class: "chip", title: TEXT.deleteEvent, onclick: () => a.removeEvent(index) }, "×"),
             ),
           ),
         )
       : h("p", { class: "hint" }, TEXT.noEvents);
     return [
-      h("div", { class: "section-summary" }, `${fmt.clock(sec.start_s)} – ${fmt.clock(end)} · ${bars} ${TEXT.bars}`),
+      h("div", { class: "section-summary" }, `${fmt.clock(sec.start_s)} – ${fmt.clock(end)} · ${T.unit.bars(bars)}`),
       h("div", { class: "field-label" }, TEXT.sectionName),
-      segmented(labels.map((l) => ({ value: l, label: l })), sec.label, (l) => a.setSectionLabel(l), "grid3"),
+      segmented(labels.map((l) => ({ value: l, label: sectionName(l) })), sec.label, (l) => a.setSectionLabel(l), "grid3"),
       this.slider(PARAM_LABEL.wet_db, "Section", "wet_db", 0.5, fmt.db, (s) => s.sections[section].wet_db, scene, (v) => a.setSectionWet(v)),
       h(
         "div",

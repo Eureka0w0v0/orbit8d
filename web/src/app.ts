@@ -1,12 +1,15 @@
 // 总控：界面阶段状态机 + 场景数据（分段时间轴）+ 3D 视图 + 试听引擎 + 导入导出流程。
 
 import { ApiError, api, poll } from "./api";
+import { T, errorText, lang, switchLang, type Lang } from "./i18n";
 import { AudioEngine, STEM_NAMES, type ListenMode } from "./audio/engine";
 import { buildRenderParams, compileMotions, effectiveTrackGains, type Timing } from "./audio/params";
 import { toOrbitParams, type OrbitParams } from "./orbit/orbit";
 import { phaseAt, type TrackMotion } from "./orbit/timeline";
 import { Dome } from "./scene/dome";
 import {
+  MAX_EVENTS,
+  MAX_SECTIONS,
   addEvent,
   applyPreset,
   barGrid,
@@ -18,6 +21,7 @@ import {
   sectionIndexAt,
   splitAt,
   type BarGrid,
+  type EditReason,
   type EditResult,
 } from "./scene/edit";
 import { History } from "./scene/history";
@@ -34,7 +38,7 @@ import { EXPORT_STATE_LABEL, PROJECT_STATE_LABEL, TEXT } from "./ui/labels";
 import { OrbitPanel, TracksPanel, type PanelActions, type PanelContext } from "./ui/panels";
 import { SchemaRanges } from "./ui/schema";
 import { TimelineStrip } from "./ui/timeline";
-import { ExportDialog, Overlay, Transport } from "./ui/widgets";
+import { ExportDialog, Overlay, Transport, languageSelect } from "./ui/widgets";
 
 type Phase = "booting" | "empty" | "uploading" | "processing" | "loading" | "ready" | "error";
 
@@ -58,6 +62,7 @@ const SAVE_DEBOUNCE_MS = 800;
 const SAVE_RETRY_MS = 5000;
 const ORIGINAL_PREVIEW = "original";
 const SEEK_STEP_S = 5;
+const DEFAULT_RADIUS_M = 1.2; // 还没打开歌时三层半球按默认轨道距离画（与后端 Orbit.radius_m 默认值一致）
 const STAGE_SPAN: Partial<Record<Project["state"], [number, number]>> = {
   UPLOADED: [0, 0.02],
   DECODING: [0.02, 0.06],
@@ -77,10 +82,17 @@ function isTextEntry(el: HTMLElement): boolean {
   return el.tagName === "INPUT" && TEXT_INPUT_TYPES.has((el as HTMLInputElement).type);
 }
 
+/** 给用户看的错误：按错误码用当前语言说明，后面带上错误码方便排查。 */
 function describe(err: unknown): string {
-  if (err instanceof ApiError) return `${err.message}（${err.code}）`;
+  if (err instanceof ApiError) return `${errorText(err.code, err.message)} (${err.code})`;
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+function editMessage(reason: EditReason): string {
+  if (reason === "maxSections") return T.edit.maxSections(MAX_SECTIONS);
+  if (reason === "maxEvents") return T.edit.maxEvents(MAX_EVENTS);
+  return T.edit[reason];
 }
 
 function storage(): Storage | null {
@@ -144,11 +156,15 @@ export class App {
       this.undoButton,
       this.redoButton,
       this.saveStatus,
-      h("button", { type: "button", class: "ghost", onclick: () => this.overlay.pickFile() }, "导入新歌"),
+      languageSelect((next) => void this.changeLanguage(next)),
+      h("button", { type: "button", class: "ghost", onclick: () => this.overlay.pickFile() }, TEXT.importSong),
       h("button", { type: "button", class: "primary", onclick: () => this.openExport() }, TEXT.export),
     );
     this.toastBox = h("div", { class: "toasts" });
-    this.overlay = new Overlay((file) => void this.importFile(file));
+    this.overlay = new Overlay(
+      (file) => void this.importFile(file),
+      (next) => void this.changeLanguage(next),
+    );
     this.exportDialog = new ExportDialog();
     this.timeline = new TimelineStrip({
       scrubStart: (t) => this.scrubStart(t),
@@ -163,13 +179,14 @@ export class App {
     const badge = h("div", { class: "listen-badge" }, TEXT.listeningOriginal);
     root.replaceChildren(viewport, badge, header, this.transport.el, h("p", { class: "credits" }, TEXT.credits), this.overlay.el, this.exportDialog.el, this.toastBox);
     window.addEventListener("pagehide", () => void this.flushSave(true)); // 关页面前把没存的改动发出去
-    this.overlay.showProgress("正在启动", null);
+    this.overlay.showProgress(TEXT.starting, null);
 
     try {
       this.stage = new Stage(viewport, visualRadius);
       const [health, schema, presets, hrtf, head] = await Promise.all([api.health(), api.schema(), api.presets(), api.hrtf(), loadHead()]);
       this.formats = health.formats;
       this.stage.scene.add(head, this.dome.group);
+      this.dome.setRadius(visualRadius(DEFAULT_RADIUS_M));
       this.dome.visible = storage()?.getItem(DOME_KEY) !== "0";
       await this.engine.init(hrtf);
       this.engine.onEnded = () => this.transport.update(this.engine.time, this.engine.duration, false);
@@ -207,7 +224,7 @@ export class App {
 
   // ---------- 状态机 ----------
   private go(next: Phase): void {
-    if (!PHASE_TRANSITIONS[this.phase].includes(next)) throw new Error(`界面状态非法跳转：${this.phase} → ${next}`);
+    if (!PHASE_TRANSITIONS[this.phase].includes(next)) throw new Error(`Illegal UI phase transition: ${this.phase} -> ${next}`);
     this.phase = next;
     document.body.dataset.phase = next;
   }
@@ -243,7 +260,7 @@ export class App {
           return;
         }
       } catch (err) {
-        console.warn("[orbit8d] 上次的歌已不可用", err);
+        console.warn("[orbit8d] the last project is no longer available", err);
         storage()?.removeItem(LAST_PROJECT_KEY);
         if (this.phase !== "booting") {
           this.fail(err);
@@ -294,16 +311,16 @@ export class App {
     try {
       return (await api.savedScene(project.id)) ?? (await api.choreography(project.id));
     } catch (err) {
-      console.warn("[orbit8d] 自动编排不可用，改用经典预设", err);
+      console.warn("[orbit8d] auto choreography unavailable, using the classic preset", err);
       return api.preset(FALLBACK_PRESET, project.analysis!.default_bars);
     }
   }
 
   private async loadProject(project: Project): Promise<void> {
     const analysis = project.analysis;
-    if (!analysis) throw new Error("项目缺少分析结果");
+    if (!analysis) throw new Error("The project has no analysis");
     this.go("loading");
-    this.overlay.showProgress("加载试听音频", null, project.source.filename);
+    this.overlay.showProgress(TEXT.loadingAudio, null, project.source.filename);
     await this.flushSave(); // 换歌前先把上一首没存的改动存掉
     const [buffers, original] = await Promise.all([
       Promise.all(STEM_NAMES.map(async (n) => [n, await api.stem(project.id, n)] as const)),
@@ -392,7 +409,7 @@ export class App {
     if (!this.scene || !this.grid) return;
     const r = fn(this.scene);
     if (r.ok) this.applyScene(r.scene);
-    else this.toast(r.reason);
+    else this.toast(editMessage(r.reason));
   }
 
   private async applyPresetToSection(name: string): Promise<void> {
@@ -439,6 +456,13 @@ export class App {
     if (scene.room.name !== this.loadedRoom) void this.ensureRoom(scene.room.name).catch((err) => this.fail(err));
   }
 
+  // ---------- 语言：先把没存的改动存掉，再记住选择并刷新页面 ----------
+  private async changeLanguage(next: Lang): Promise<void> {
+    if (next === lang) return;
+    await this.flushSave();
+    switchLang(next);
+  }
+
   // ---------- 撤销 / 重做 ----------
   private undo(): void {
     if (!this.scene || this.phase !== "ready") return;
@@ -480,7 +504,7 @@ export class App {
       await api.saveScene(job.projectId, job.scene, keepalive);
       if (seq === this.saveSeq && !this.pendingSave) this.setSaveState("saved");
     } catch (err) {
-      console.warn("[orbit8d] 保存场景失败，稍后重试", err);
+      console.warn("[orbit8d] saving the scene failed, retrying later", err);
       if (seq !== this.saveSeq) return; // 已经有更新的保存在进行
       this.pendingSave ??= job;
       this.setSaveState("failed");
@@ -575,7 +599,7 @@ export class App {
       const wav = await api.sceneEq(project.id, scene);
       if (seq === this.eqSeq) await this.engine.setEq(wav);
     } catch (err) {
-      console.warn("[orbit8d] 更新补偿 EQ 失败，继续用上一个", err);
+      console.warn("[orbit8d] updating the compensation EQ failed, keeping the previous one", err);
     }
   }
 
@@ -671,7 +695,7 @@ export class App {
   // ---------- 导出 ----------
   private openExport(): void {
     if (this.phase !== "ready" || !this.project || !this.scene) {
-      this.toast("先导入一首歌");
+      this.toast(TEXT.importFirst);
       return;
     }
     this.exportDialog.open(this.formats, (fmt) => void this.runExport(fmt));

@@ -42,7 +42,7 @@ function knobTexture(): THREE.CanvasTexture {
   canvas.width = KNOB_TEXTURE_PX;
   canvas.height = KNOB_TEXTURE_PX;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("无法创建 2D 画布");
+  if (!ctx) throw new Error("2D canvas is not available");
   const c = KNOB_TEXTURE_PX / 2;
   const ring = (outer: number, inner: number, fill: string) => {
     ctx.beginPath();
@@ -73,6 +73,7 @@ export class Handles {
     );
     this.knob.renderOrder = DOT_RENDER_ORDER + 2;
     this.knob.userData = { kind: "radius" };
+    this.knob.visible = false; // 第一次 update（有场景之后）才出现，避免默认缩放铺满屏幕
     stage.scene.add(this.knob);
     const el = stage.renderer.domElement;
     el.addEventListener("pointerdown", this.onDown);
@@ -82,6 +83,7 @@ export class Handles {
 
   /** 每帧把距离圆环放到选中音轨的轨道左侧（固定声源则放在声源外侧），并保持固定像素大小。 */
   update(): void {
+    this.knob.visible = true;
     this.knob.scale.setScalar(KNOB_PX * this.stage.frameInfo().pixelScale);
     const p = this.deps.params(this.deps.selected());
     if (p.shape === "fixed") {

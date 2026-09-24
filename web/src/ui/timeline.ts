@@ -2,6 +2,7 @@
 // 点色块跳到那里，按住左右拖可以预览（松手才真正跳过去）；拖段落之间的竖线调整分界；拖事件条移动、拖事件条右边缘改长短（吸附到拍，按住 ⌥ 自由），
 // 点一下事件条选中它（Delete 删除）。数值合法性（吸附、不重叠）由 App 调 scene/edit.ts 保证。
 
+import { sectionName } from "../i18n";
 import { eventAnchor } from "../scene/edit";
 import type { Scene } from "../types";
 import { fmt, h } from "./dom";
@@ -166,9 +167,9 @@ export class TimelineStrip {
         {
           class: "tl-block",
           style: `left:${pct(s.start_s / d)};width:${pct((end - s.start_s) / d)};--c:${SECTION_COLORS[s.label] ?? DEFAULT_SECTION_COLOR}`,
-          title: `${s.label} · ${fmt.clock(s.start_s)}–${fmt.clock(end)}`,
+          title: `${sectionName(s.label)} · ${fmt.clock(s.start_s)}–${fmt.clock(end)}`,
         },
-        s.label,
+        sectionName(s.label),
       );
     });
     const grips = scene.sections.slice(1).map((s, i) => h("div", { class: "tl-grip", "data-k": i + 1, style: `left:${pct(s.start_s / d)}` }));
@@ -181,7 +182,7 @@ export class TimelineStrip {
           class: `tl-mark ${e.kind}`,
           "data-index": i,
           style: `left:${pct(this.anchors[i] / d)};width:${pct(e.duration_s / d)}`,
-          title: `${EVENT_LABEL[e.kind]} · ${e.targets.map((t) => TRACK_LABEL[t]).join("、")} · ${fmt.clock(this.anchors[i])}`,
+          title: `${EVENT_LABEL[e.kind]} · ${e.targets.map((t) => TRACK_LABEL[t]).join(TEXT.listSep)} · ${fmt.clock(this.anchors[i])}`,
         },
       ),
     );

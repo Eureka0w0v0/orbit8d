@@ -32,7 +32,7 @@ export interface Position {
 }
 
 export function normalizeBpm(bpm: number): number {
-  if (!(bpm > 0)) throw new Error(`BPM 必须为正: ${bpm}`);
+  if (!(bpm > 0)) throw new Error(`BPM must be positive: ${bpm}`);
   let b = bpm;
   while (b < BPM_NORM_LOW) b *= 2;
   while (b >= BPM_NORM_HIGH) b /= 2;
