@@ -223,7 +223,8 @@ def test_scene_schema_exposes_parameter_ranges(client):
 
 def test_presets_list_endpoint(client):
     names = client.get("/api/presets").json()
-    assert names == ["classic", "singer", "dual", "tumble", "single", "layers", "diagonal", "cross"]
+    assert names == ["classic", "singer", "dual", "tumble", "layers", "diagonal", "cross"]
+    assert client.get("/api/presets/single").status_code == 404  # 单点环绕已移除
 
 
 def test_analysis_has_sections_tone_anchor_and_version(client, ready_project):

@@ -142,8 +142,7 @@ def test_canonical_json_is_order_independent():
 def test_presets_are_single_section_and_valid(name):
     scene = preset(name, default_bars=2)
     assert isinstance(scene, Scene) and len(scene.sections) == 1
-    if name != "single":  # 单点环绕固定 12 秒一圈，其余预设跟随小节
-        assert any(o.speed.bars == 2 for o in scene.sections[0].orbits.values())
+    assert any(o.speed.bars == 2 for o in scene.sections[0].orbits.values())  # 预设都跟随歌曲小节
 
 
 def test_unknown_preset_is_rejected():
@@ -176,13 +175,6 @@ def test_height_reaches_top_layer():
     o.height_deg = 90.0
     with pytest.raises(ValidationError):
         o.height_deg = 91.0
-
-
-def test_single_point_preset_imitates_reference_video():
-    scene = preset("single", default_bars=4)
-    assert scene.sections[0].wet_db == -10.0 and all(m.width_deg == 0.0 for m in scene.mix.values())
-    for o in scene.sections[0].orbits.values():
-        assert o.shape == "circle" and o.speed.mode == "seconds" and o.speed.seconds == 12.0
 
 
 def test_layers_diagonal_cross_presets():

@@ -20,7 +20,6 @@ export const PRESET_LABEL: Record<string, string> = {
   singer: "歌手绕着你转",
   dual: "双环反向",
   tumble: "上下翻滚",
-  single: "单点环绕（视频同款）",
   layers: "三层环绕",
   diagonal: "斜向环绕",
   cross: "立体交叉",

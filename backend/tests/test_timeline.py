@@ -33,7 +33,7 @@ def two_section_scene() -> Scene:
     return Scene(sections=[a, b])
 
 
-@pytest.mark.parametrize("name", ["classic", "diagonal", "cross", "layers", "singer", "single"])
+@pytest.mark.parametrize("name", ["classic", "diagonal", "cross", "layers", "singer", "tumble"])
 @pytest.mark.parametrize("offset", [0.0, -20.0])
 def test_single_section_without_events_equals_v1(name, offset):
     scene = preset(name, 2)

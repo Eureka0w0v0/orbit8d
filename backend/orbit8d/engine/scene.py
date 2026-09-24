@@ -10,7 +10,7 @@ from orbit8d.engine.orbit import OrbitParams, period_seconds
 
 TRACKS = ("vocals", "drums", "bass", "other")
 TrackName = Literal["vocals", "drums", "bass", "other"]
-PRESETS = ("classic", "singer", "dual", "tumble", "single", "layers", "diagonal", "cross")
+PRESETS = ("classic", "singer", "dual", "tumble", "layers", "diagonal", "cross")
 DEFAULT_WIDTH = {"vocals": 0.0, "drums": 40.0, "bass": 0.0, "other": 40.0}
 DEFAULT_SEND = {"vocals": 1.0, "drums": 0.4, "bass": 0.0, "other": 0.7}
 DEFAULT_WET_DB = -12.0
@@ -21,8 +21,6 @@ MAX_SECTIONS = 16
 MAX_EVENTS = 64
 MAX_LABEL = 16
 HOLD_RAMP_S = 0.5  # 停顿前后各 0.5 秒减速 / 加速（timeline.py 同一常量）
-SINGLE_TURN_S = 12.0  # 参考视频实测：约 12 秒一圈
-SINGLE_WET_DB = -10.0
 LAYER_HEIGHTS = {"surround": 0.0, "height": 35.0, "top": 75.0}  # 与前端 layers.ts 的一键高度一致
 DIAGONAL_TILT = 45.0
 VERTICAL = 90.0
@@ -229,11 +227,6 @@ def preset_parts(name: str, default_bars: int) -> tuple[dict[str, Orbit], dict[s
         for anchored in ("drums", "bass"):
             o[anchored].shape = "fixed"
         mix["drums"].width_deg = 60.0
-    elif name == "single":
-        for track in TRACKS:
-            mix[track].width_deg = 0.0
-            o[track].speed = Speed(mode="seconds", seconds=SINGLE_TURN_S)
-        wet = SINGLE_WET_DB
     elif name == "layers":
         o["vocals"].height_deg = LAYER_HEIGHTS["top"]
         o["other"].height_deg = LAYER_HEIGHTS["height"]
@@ -253,7 +246,7 @@ def preset_parts(name: str, default_bars: int) -> tuple[dict[str, Orbit], dict[s
 
 
 def preset(name: str, default_bars: int) -> Scene:
-    """预设：经典 8D / 歌手绕着你转 / 双环反向 / 上下翻滚 / 单点环绕（参考视频同款）/
-    三层环绕 / 斜向环绕 / 立体交叉。都是只有一段“全曲”的场景。"""
+    """预设：经典 8D / 歌手绕着你转 / 双环反向 / 上下翻滚 / 三层环绕 / 斜向环绕 / 立体交叉。
+    都是只有一段“全曲”的场景，速度都跟随歌曲小节。"""
     orbits, mix, wet = preset_parts(name, default_bars)
     return Scene(mix=mix, sections=[Section(orbits=orbits, wet_db=wet)])
