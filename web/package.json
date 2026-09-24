@@ -4,8 +4,8 @@
   "description": "Orbit 8D 前端（Three.js + Web Audio）",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run"
   },
   "type": "module",
@@ -13,6 +13,7 @@
     "three": "^0.186.0"
   },
   "devDependencies": {
+    "@types/node": "^26.6.2",
     "@types/three": "^0.186.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
