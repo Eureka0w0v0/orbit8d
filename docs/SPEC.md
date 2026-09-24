@@ -169,12 +169,16 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 
 非法跳转抛 `IllegalTransition`，状态不变。每次跳转写结构化日志（trace_id = 项目 / 导出 ID）。服务重启时把未完成的记录标为 FAILED（INTERRUPTED）。
 
-## 7. API（仅 127.0.0.1，Host 头白名单防 DNS 重绑定）
+## 7. API（仅 127.0.0.1，Host 头白名单防 DNS 重绑定，跨站写请求 403）
+
+- Host 头只接受 `127.0.0.1` / `localhost`。
+- 非 GET/HEAD/OPTIONS 请求若带 Origin，必须是本服务或 Vite 开发服务器（5173）的源，否则 403（防 CSRF）。
+- 错误响应统一为 `{code, message}`；路径里的 ID 必须是 16 位小写十六进制，否则 404。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | /api/health | 版本、可用输出格式 |
-| POST | /api/projects | multipart 上传；流式落盘，>300 MB 立即中止；ffprobe 校验格式白名单与时长 ≤ 20 分钟；项目 ID = 内容 sha256 前 16 位（重复上传直接返回） |
+| POST | /api/projects | 请求体为文件原始字节（`Content-Type: application/octet-stream`），原文件名放在 `X-Filename` 头（URL 编码，仅用于显示）；边收边写临时文件，>300 MB 立即中止（413）；ffprobe 校验格式白名单与时长 ≤ 20 分钟；项目 ID = 内容 sha256 前 16 位（重复上传直接返回，失败过的会重试） |
 | GET | /api/projects/{id} | 状态、阶段进度、BPM、时长、默认小节数、t_ref、校准增益、试听总增益 |
 | GET | /api/projects/{id}/stems/{vocals_hi,bass_hi,drums_hi,other_hi,bass_sub,drums_sub,other_sub}.flac | 试听用 24-bit FLAC（drums_hi/other_hi 为立体声） |
 | GET | /api/assets/hrtf.bin, /api/assets/eq.wav, /api/assets/brir/{room}.wav | DSP 数据 |
