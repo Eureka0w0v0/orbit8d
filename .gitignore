@@ -1,0 +1,19 @@
+# 运行时数据（上传、分轨、导出、日志、下载的 HRTF 数据）
+data/
+
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Node / 前端构建产物
+web/node_modules/
+web/dist/
+
+# 大体积数据集不进仓库，由 make assets 下载
+*.sofa
+
+# 系统文件
+.DS_Store
