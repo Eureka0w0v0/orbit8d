@@ -1,72 +1,150 @@
 # Orbit 8D
 
-把普通音乐做成**可自定义的 8D（双耳环绕）音乐**：自动把歌拆成人声 / 鼓 / 贝斯 / 其他乐器四轨，每条音轨在 3D 白模人头周围沿你设定的轨道运动，边拖边听，满意后导出 m4a / mp3 / flac / wav / ogg。
+**Turn any song into customizable 8D (binaural) audio — on your own computer.**
+Orbit 8D splits a song into vocals, drums, bass and other instruments, places each part in 3D space around a virtual head, and moves it along orbits you can shape. You hear the result live in the browser and export it to M4A, MP3, FLAC, WAV or OGG.
 
-- **自动编排**：识别前奏 / 主歌 / 副歌 / 桥段 / 尾声，每段配不同的轨道（副歌加速斜绕、桥段立体交叉……），副歌开头“飞过头顶”、主歌里“停一下”；每段都能改，也能自己切段、加事件
-- 真实人头测量的 HRTF（Neumann KU100，全球面 2° 网格），不是简单的左右声像摆动
-- 6 种轨道形状（圆、椭圆、钟摆、8 字、螺旋、固定），可调距离、速度（按小节或秒）、方向、起点、高度、前后 / 左右倾斜、水平转向
-- 三层半球网格（环绕层 / 高度层 / 顶层），一键把轨道移到头顶或耳朵高度
-- 120 Hz 以下的超低频固定在正前方，不会出现一只耳朵轰低音
-- 音色贴近原曲：按当前场景自动补偿 HRTF 带来的染色，经典预设与原曲的长期平均谱差不到 0.5 dB；限幅保守，尽量保住动态
-- 浏览器里实时试听（AudioWorklet），与导出使用同一套算法和数据
-- 纯本地运行：服务只监听 127.0.0.1，歌曲不会上传到任何地方
+![Orbit 8D main screen](docs/images/overview.jpg)
 
-> 8D 效果必须**戴耳机**听，外放听不出来。
+> **Use headphones.** 8D audio relies on each ear hearing something different. On speakers it just sounds like ordinary stereo.
 
-## 快速开始
+## Highlights
 
-需要：macOS（推荐 Apple 芯片，分轨会用 GPU）、[uv](https://docs.astral.sh/uv/)、Node.js 20+、ffmpeg（`brew install ffmpeg`）。
+- **Real binaural rendering.** Sound positions are rendered with a measured human-head response (Neumann KU100 HRTF, 2° grid over the whole sphere), so you get real timing, level and ear-shape cues, not just left–right panning.
+- **Stem-aware.** Each instrument group moves on its own orbit. Deep bass (below 120 Hz) always stays in front, so the low end never lurches from ear to ear.
+- **Auto choreography.** The app finds the intro, verses, choruses, bridge and outro, and gives each section its own motion: a slow raised spiral for the intro, fast opposite diagonals for the chorus, a vertical cross for the bridge, a fly-over at the biggest chorus and a short hold inside long verses. Every section stays editable.
+- **Hands-on 3D editor.** Choose from six orbit shapes, tilt an orbit in any direction, lift it to the height or top layer, change distance, speed and direction, and drag section boundaries and events on a timeline.
+- **Faithful sound.** A scene-aware tone correction keeps the timbre close to the original song, and gentle mastering keeps the dynamics. Press **B** at any time to switch between 8D and the original at matched loudness.
+- **What you hear is what you export.** The browser preview uses the same algorithm and data as the high-quality export.
+- **Private.** Everything runs locally. The server only listens on `127.0.0.1`; your music never leaves your machine.
+- **Three languages.** The interface is available in English, 中文 and 日本語.
+
+## Requirements
+
+| | |
+|---|---|
+| Operating system | macOS on Apple Silicon (tested; stem separation runs on the GPU). Linux with an NVIDIA GPU or on CPU should work but is untested — CPU separation takes roughly 2.5× the song length. |
+| Tools | [uv](https://docs.astral.sh/uv/) (Python manager), [Node.js](https://nodejs.org/) 20 or newer, [ffmpeg](https://ffmpeg.org/) (`brew install ffmpeg`), `make` and `git` |
+| Browser | A current Chrome, Edge, Safari or Firefox |
+| Disk space | About 2 GB for dependencies and models, plus about 500 MB per imported song |
+| Memory | 16 GB recommended — exporting a 4-minute song briefly uses about 5–6 GB |
+
+## Install
 
 ```bash
-make setup   # 安装前后端依赖，下载 HRTF 数据（约 20 MB，校验 sha256）
-make run     # 构建前端并启动服务，自动打开 http://127.0.0.1:8765
+git clone https://github.com/Eureka0w0v0/orbit8d.git
+cd orbit8d
+make setup
 ```
 
-第一次分轨时会自动下载 Demucs 模型（几百 MB，需要联网），之后可离线使用。
+`make setup` installs Python 3.12 and the backend dependencies (including PyTorch and Demucs) with uv, installs the web dependencies with npm, and downloads the HRTF data set (about 20 MB, checked against a SHA-256 hash).
 
-## 使用
-
-1. **导入**：把歌曲拖进窗口（或点击选择文件）。依次经过解码 → 分轨（约为歌曲时长的 0.3 倍）→ 测速、校准与段落识别。同一首歌再次导入会直接打开。
-2. **看与听**：打开就是自动编排好的版本（改过的话打开上次保存的样子）。空格播放 / 暂停，← / → 跳 5 秒，**B 在 8D 和原曲之间切换**（两边音量已对齐，方便比音色和空间感）。拖动画面旋转视角，滚轮缩放。每条彩色轨道对应一条音轨，轨道上的彩色小点就是声音的位置（鼓和其他乐器是立体声，也只画一个点，选中时轨道上加亮的一段弧表示声像宽度）；底部电平表显示左右耳音量。
-3. **时间轴**：播放条就是时间轴——彩色块是段落，上面叠着原曲的音量起伏；上方的黄条是“停顿”、粉条是“飞过头顶”。点一下跳到那里，按住左右拖可以边拖边看（松手才跳过去）；拖段落之间的竖线调整分界（自动对齐小节）；拖事件条改位置、拖右端改长短（吸附到拍，按住 ⌥ 自由拖），点一下选中后按 Delete 删除。右侧面板和 3D 轨道显示的都是**播放头所在的那一段**。
-4. **改轨道**（改的是播放头所在的那一段）：
-   - 点击轨道或色点（或左栏的音轨名）选中音轨，右侧面板分【轨道】【混音】【段落】【空间】四页；
-   - **朝向**：一键切换水平 / 竖·左右（左耳→头顶→右耳）/ 竖·前后（正前→头顶→脑后）/ 两个斜 45°；
-     或者拖**倾斜盘**上的白点：往哪边拖轨道就往哪边翘，越靠边越竖直，双击回水平；
-   - 3D 里拖轨道左侧的**白色小圆环**改距离，暂停时可以直接拖色点改起点；数值细调在“精细调节”里。
-5. **分层与预设**：右侧“所在层”一键切换环绕层（耳朵高度）/ 高度层 / 顶层（头顶绕圈）；左侧“✨ 自动编排”一键恢复按段落的编排，下面是一键预设：经典 8D / 歌手绕着你转 / 双环反向 / 上下翻滚 / 三层环绕 / 斜向环绕 / 立体交叉。有多段时，预设只改当前这一段。
-6. **段落**：“段落”页改段落名和这一段的混响量、在播放头处切分 / 删除本段、查看和删除这一段的事件，或在播放头处给当前音轨加“停顿”“飞过头顶”。所有改动自动保存（顶栏显示“已保存”），⌘Z / ⇧⌘Z 或顶栏 ↩ ↪ 撤销 / 重做。
-7. **混音**：左栏每条音轨有静音（M）、独奏（S）；“混音”页调音量、声像宽度、混响送出（全曲共用）；“空间”页切换房间（小房间 / 大厅 / 教堂）和“背后压暗”（转到脑后时高频变暗的程度）。
-8. **导出**：右上角“导出”，选择格式后在后台做高质量渲染，完成后自动下载 `<歌名> (8D).<扩展名>`，保留原曲的封面和标签。
-
-## 开发
+## Run
 
 ```bash
-make dev     # 后台 127.0.0.1:8765 + Vite 开发服务器 127.0.0.1:5173（热更新）
-make test    # Python 与 TypeScript 全量测试
-make lint    # ruff 检查与格式校验
+make run
+```
+
+This builds the web interface, starts the local server and opens **http://127.0.0.1:8765** in your browser. Stop it with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
+
+The first time you import a song, Demucs downloads its separation model (a few hundred MB). After that Orbit 8D works offline.
+
+## Quick start
+
+1. **Import.** Drag a song onto the window, or click to choose a file. Orbit 8D decodes it, separates the stems (about a third of the song's length on Apple Silicon), then analyses tempo and sections.
+2. **Listen.** Put on headphones and press <kbd>Space</kbd>. The song opens with its auto choreography; the coloured dots show where each part is.
+3. **Compare.** Press <kbd>B</kbd> to hear the original, and <kbd>B</kbd> again to return to 8D.
+4. **Adjust (optional).** Click the timeline to jump to a section, then change that section's orbits in the right-hand panel. Changes save automatically, and <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes them.
+5. **Export.** Click **Export**, pick a format and download `Artist - Title (8D).m4a`. Title, artist and album are kept, and M4A, MP3 and FLAC also keep the cover art.
+
+The [User Guide](docs/USER_GUIDE.md) walks through every panel and button.
+
+## Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| <kbd>Space</kbd> | Play / pause |
+| <kbd>←</kbd> / <kbd>→</kbd> | Jump back / forward 5 seconds |
+| <kbd>B</kbd> | Switch between 8D and the original |
+| <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Z</kbd> | Undo |
+| <kbd>⇧</kbd>+<kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Z</kbd> or <kbd>Ctrl</kbd>+<kbd>Y</kbd> | Redo |
+| <kbd>Delete</kbd> / <kbd>Backspace</kbd> | Delete the selected event |
+| <kbd>Esc</kbd> | Deselect the event |
+| Hold <kbd>⌥</kbd>/<kbd>Alt</kbd> while dragging an event | Place it freely instead of snapping to beats |
+
+## Documentation
+
+- **[User Guide](docs/USER_GUIDE.md)** — how to use every part of the app, with screenshots.
+- **[How It Works](docs/HOW_IT_WORKS.md)** — what happens from import to export: stem separation, tempo and section detection, the timeline, binaural rendering, reverb, tone correction and mastering.
+- **[Technical specification](docs/SPEC.md)** (Chinese) — the engineering reference: formulas, parameter ranges, API, state machines and test design.
+
+## Configuration
+
+Settings are read from environment variables when the server starts:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `ORBIT8D_PORT` | `8765` | Port of the local server |
+| `ORBIT8D_DATA_DIR` | `./data` | Where songs, stems, exports and logs are stored |
+| `ORBIT8D_MAX_UPLOAD_MB` | `300` | Largest file you can import |
+| `ORBIT8D_MAX_DURATION_S` | `1200` | Longest song you can import (seconds) |
+
+The server always binds to `127.0.0.1`; there is deliberately no option to expose it to the network.
+
+## Your data
+
+Everything lives in the `data/` folder of the project (or in `ORBIT8D_DATA_DIR`):
+
+- `data/projects/<id>/` — one folder per song: the decoded audio, the four stems, preview files, the analysis and your saved scene. The id is derived from the file's content, so importing the same file again opens the existing project instantly.
+- `data/exports/` — rendered exports.
+- `data/logs/orbit8d.log` — the server log (structured JSON), useful when something goes wrong.
+
+You can delete any of these at any time; deleting a project folder only means the song has to be processed again next time.
+
+## Troubleshooting
+
+| Problem | What to do |
+|---|---|
+| It sounds like normal stereo | Use headphones, not speakers. Check that the button next to Play says **8D**, not **Original**. |
+| "ffmpeg was not found" | Install ffmpeg (`brew install ffmpeg`) and restart the server. |
+| "Cannot reach the local service" | The server is not running. Start it with `make run` and reload the page. |
+| Port 8765 is already in use | Start with another port: `ORBIT8D_PORT=8876 make run`. |
+| A song stays in "Separating stems" for a long time | The first run downloads the Demucs model. Without an Apple Silicon or NVIDIA GPU, separation runs on the CPU and takes about 2.5× the song length. |
+| An older song shows "analysing" after an update | When the analysis format changes, projects are re-analysed once at startup (the stems are kept). This takes about 15 seconds per song. |
+
+More answers are in the [User Guide](docs/USER_GUIDE.md#troubleshooting).
+
+## Development
+
+```bash
+make dev    # backend on 127.0.0.1:8765 + Vite dev server on 127.0.0.1:5173 with hot reload
+make test   # Python and TypeScript test suites
+make lint   # ruff check and format check
 ```
 
 ```
 backend/orbit8d/
-  engine/     轨道公式、时间轴、HRTF、分块渲染、混响、母带、音色补偿、测速、段落识别、自动编排、场景模型、整曲管线
-  media/      ffmpeg 封装（格式白名单、编码、封面）
-  separate/   Demucs 分轨
-  jobs/       显式状态机、记录存储、任务队列
-  api/        HTTP 接口
+  engine/     orbit formulas, timeline, HRTF, block renderer, reverb, mastering, tone correction,
+              tempo, section detection, auto choreography, scene model, full-song pipeline
+  media/      ffmpeg wrapper (input whitelist, encoding, cover art)
+  separate/   Demucs stem separation
+  jobs/       explicit state machines, record store, job queue
+  api/        HTTP API
 web/src/
-  orbit/      轨道公式与时间轴（TS 版，与 Python 逐点一致）
-  audio/      实时双耳渲染核心、AudioWorklet、试听引擎
-  scene/      Three.js 舞台、白模人头、轨道视图、拖拽把手、场景编辑
-  ui/         面板、时间轴与控件
-shared/golden/  跨语言一致性测试数据（Python 生成，TS 校验）
+  orbit/      orbit formulas and timeline (the TypeScript twin of the Python code)
+  audio/      real-time binaural core, AudioWorklet, preview engine
+  scene/      Three.js stage, head model, orbit views, drag handles, scene editing
+  ui/         panels, timeline and widgets
+  i18n/       English / Chinese / Japanese strings
+shared/golden/  cross-language test data (generated by Python, checked by TypeScript)
 ```
 
-完整设计、算法、不变量和音质评测见 [docs/SPEC.md](docs/SPEC.md)（v2 的时间轴、段落识别、音色补偿在 §13）。运行数据（上传、分轨、导出、日志）都在 `data/`，可以随时删除。
+The Python and TypeScript versions of the orbit formulas, the timeline and the block renderer are kept in lock-step by shared "golden" test data: positions must match within 10⁻⁹ and rendered audio within −90 dB.
 
-## 第三方素材与许可
+## Credits and licenses
 
-- 人头模型：“Infinite, 3D Head Scan” by Lee Perry-Smith，[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)（`web/public/models/LeePerrySmith_License.txt`），取自 three.js 示例。
-- HRTF：TH Köln，“A Spherical Far Field HRIR/HRTF Compilation of the Neumann KU 100”（B. Bernschütz），CC BY-SA 3.0；不随仓库分发，由 `make assets` 从 sofacoustics.org 下载。
-- 分轨模型：[Demucs](https://github.com/facebookresearch/demucs)（MIT）。
-- 3D 渲染：[three.js](https://threejs.org/)（MIT）。
+- Head model: "Infinite, 3D Head Scan" by Lee Perry-Smith, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) (`web/public/models/LeePerrySmith_License.txt`), taken from the three.js examples.
+- HRTF: TH Köln, "A Spherical Far Field HRIR/HRTF Compilation of the Neumann KU 100" (B. Bernschütz), CC BY-SA 3.0. It is not included in this repository; `make setup` downloads it from sofacoustics.org.
+- Stem separation: [Demucs](https://github.com/facebookresearch/demucs) (MIT).
+- 3D rendering: [three.js](https://threejs.org/) (MIT).
+
+No open-source license has been chosen for Orbit 8D itself yet, so for now the code is published for reference only. The third-party assets above keep their own licenses.

@@ -32,6 +32,7 @@ web/（Vite + TypeScript + Three.js，无 UI 框架）
   src/audio/   AudioWorklet 双耳渲染核心 + 播放控制 + 混响/EQ 卷积
   src/scene/   白模人头、轨道环、把手、声源色点、拖拽交互、场景编辑纯函数（edit.ts）
   src/ui/      音轨面板、参数面板、播放条里的时间轴、导入与导出
+  src/i18n/    界面三语词典（中文 / 日本語 / English）与语言检测
 backend/orbit8d/（Python 3.12 + FastAPI）
   engine/      hrtf / orbit / timeline / render / reverb / master / tone / tempo / structure / choreo / scene / pipeline
   media/       ffmpeg 探测、解码、编码（参数列表调用，不经 shell）
@@ -177,7 +178,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 
 - Host 头只接受 `127.0.0.1` / `localhost`。
 - 非 GET/HEAD/OPTIONS 请求若带 Origin，必须是本服务或 Vite 开发服务器（5173）的源，否则 403（防 CSRF）。
-- 错误响应统一为 `{code, message}`；路径里的 ID 必须是 16 位小写十六进制，否则 404。
+- 错误响应统一为 `{code, message}`：message 是英文技术说明，界面按 code 显示当前语言的提示（`web/src/i18n` 的 error 表，不认识的 code 才显示 message）；路径里的 ID 必须是 16 位小写十六进制，否则 404。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -219,6 +220,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | engine.tone | 已知倾斜的匹配；参考场景 = 锚点；模型预测的染色 vs 真实渲染；静音 / 调音量不被拉回 | 1e-9；逐位相等；中高频 ±1.5 dB；±0.75 dB |
 | web scene/edit | 切分 / 删除 / 拖分界吸附小节线；事件重叠；预设只改当前段；拖事件吸附到拍、碰到同类事件停住、改长短 0.5–30 秒 | 纯函数、不改入参、位置没变返回原对象 |
 | web scene/history | 撤销 / 重做、连续修改合并、新修改清空重做、上限 100 步 | 逐步断言 |
+| web i18n | 中日英三份词典条目完全一致、无空串、英文全部译过；语言检测优先级；段落名 / 预设名 / 错误码的显示 | 逐项断言 |
 | engine.pipeline | 原曲 × original_gain 与经典场景 8D 试听（× preview_gain）的响度 | 相差 < 0.1 LU |
 | engine.structure | 音量起伏：相对最响处、静音压到 −60、不满一格也算一格 | 逐点断言 |
 | api | 场景存取：未保存 404、保存后原样取回、不合法 422 且不覆盖、超大 413、跨站 403 | 状态码与内容 |
@@ -277,6 +279,14 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 9 声道缓冲（vocals_hi, bass_hi, drums_hi L/R, other_hi L/R, bass_sub, drums_sub, other_sub）→ AudioWorklet（输出 0 = 双耳干声，输出 1 = 已逐块乘分段混响量的混响送出）→ BRIR 卷积 → 补偿 EQ 卷积 → 试听总增益 → DynamicsCompressor 兜底 → 输出；并联两路 AnalyserNode 驱动左右电平表。ConvolverNode 一律 `normalize = false`。
 原曲 A/B：原曲缓冲与 9 声道缓冲同一时刻、同一位置开始播放（采样级同步），走另一路直接进兜底限幅；两路各有一个 GainNode，切换时 40 ms 交叉淡化。原曲那一路的增益 = original_gain × preview_scale（与 8D 试听一样响）。听原曲时 3D 画面变灰变暗，并显示“正在听原曲”。
 场景变化后 250 ms 没再变，就 `POST /eq` 取新 EQ，装进闲置的第二个 EQ 卷积器，80 ms 交叉淡化切过去（只用最后一次请求的结果，切换排队不打断淡化）。时间轴编译成纯数据（TypedArray）随参数一起 postMessage 给 Worklet。
+
+### 10.5 界面语言（`src/i18n/`）
+- 三份词典 zh / ja / en，结构以 `zh.ts` 的 `Messages` 类型为准，另外两份少一个词编译不过；测试再逐项比对条目、查空串。
+- 页面启动时确定一次语言：localStorage 里记住的选择（`orbit8d.lang`）> 浏览器语言列表里第一个 zh / ja / en > 英文。`<html lang>` 与整页字体随语言设置（日文用 Hiragino Sans 等日文字体，3D 层名标签同样）。
+- 切换：顶栏与导入页的语言下拉框；先把没存的改动存掉，再记住选择并刷新页面（界面文字在启动时一次性生成）。
+- 存档里的段落名是后端给的中文规范名（前奏 / 主歌 / 副歌 / 桥段 / 尾声 / 全曲），界面用 `sectionName` 翻译显示，用户自定义的名字原样显示；预设名、朝向快捷键、层名、错误提示同理按 key 查词典。
+- 场景编辑的不合法原因返回代码（`EditReason`），由界面翻译；开发者可见的内部错误（程序缺陷）一律英文、不翻译。
+- 排版：分段按钮允许在空格处折行（英文、日文较长）；分页按钮按文字宽度分配；日文的预设与段落按钮用 `word-break: keep-all` 配合词典里的 `\u200b` 指定断行位置。
 
 ## 11. 不在范围内
 自由画路径、逐参数自动化曲线、桌面 App 打包、头部追踪、导入自定义 HRTF、手机端、多个场景版本（每首歌只保存一份当前场景）。
