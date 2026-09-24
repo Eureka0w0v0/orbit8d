@@ -25,7 +25,7 @@ PROJECT_TRANSITIONS: dict[ProjectState, frozenset[ProjectState]] = {
     ProjectState.DECODING: frozenset({ProjectState.SEPARATING, ProjectState.FAILED}),
     ProjectState.SEPARATING: frozenset({ProjectState.ANALYZING, ProjectState.FAILED}),
     ProjectState.ANALYZING: frozenset({ProjectState.READY, ProjectState.FAILED}),
-    ProjectState.READY: frozenset(),
+    ProjectState.READY: frozenset({ProjectState.ANALYZING}),  # 分析算法升级后重新分析（不重新分轨）
     ProjectState.FAILED: frozenset({ProjectState.DECODING}),  # 同一文件重新导入时重试
 }
 

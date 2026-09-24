@@ -14,7 +14,14 @@ import numpy as np
 import soundfile as sf
 
 from orbit8d.config import SAMPLE_RATE
-from orbit8d.engine.pipeline import Analysis, Renderer, analyze, prepare_sources, preview_stems
+from orbit8d.engine.pipeline import (
+    ANALYSIS_VERSION,
+    Analysis,
+    Renderer,
+    analyze,
+    prepare_sources,
+    preview_stems,
+)
 from orbit8d.engine.scene import Scene
 from orbit8d.jobs.states import ExportState, IllegalTransition, ProjectState
 from orbit8d.jobs.store import Store
@@ -44,7 +51,7 @@ class Separator(Protocol):
 
 @dataclass(frozen=True)
 class Job:
-    kind: str  # "analysis" | "export"
+    kind: str  # "analysis" | "refresh" | "export"
     id: str
 
 
@@ -96,6 +103,17 @@ class JobRunner:
             self._pending += 1
         self._queue.put(Job(kind, job_id))
 
+    def refresh_stale(self) -> int:
+        """分析算法升级后：已就绪的旧项目转回“分析中”，排队重新分析（沿用已有分轨）。返回排队个数。"""
+        stale = self._store.stale_projects(ANALYSIS_VERSION)
+        for rec in stale:
+            self._store.transition_project(rec.id, ProjectState.ANALYZING)
+            self.submit("refresh", rec.id)
+            log.info(
+                "project queued for re-analysis", extra={"event": "project.refresh", "project_id": rec.id}
+            )
+        return len(stale)
+
     def wait_idle(self, timeout: float) -> bool:
         with self._cond:
             return self._cond.wait_for(lambda: self._pending == 0, timeout)
@@ -114,11 +132,11 @@ class JobRunner:
                     self._cond.notify_all()
 
     def _run(self, job: Job) -> None:
-        handler, fail = (
-            (self._run_analysis, self._store.fail_project)
-            if job.kind == "analysis"
-            else (self._run_export, self._store.fail_export)
-        )
+        handler, fail = {
+            "analysis": (self._run_analysis, self._store.fail_project),
+            "refresh": (self._run_refresh, self._store.fail_project),
+            "export": (self._run_export, self._store.fail_export),
+        }[job.kind]
         with trace(job.id):
             log.info("job started", extra={"event": "job.start", "kind": job.kind})
             try:
@@ -148,6 +166,14 @@ class JobRunner:
             pdir / ORIG_FILE, pdir / STEMS_DIR, lambda p: store.set_project_progress(pid, p)
         )
         store.transition_project(pid, ProjectState.ANALYZING)
+        self._finish_analysis(pid)
+
+    def _run_refresh(self, pid: str) -> None:
+        """项目已处于“分析中”（refresh_stale 转过去的）：只重做分析，不重新解码、分轨。"""
+        self._finish_analysis(pid)
+
+    def _finish_analysis(self, pid: str) -> None:
+        store, pdir = self._store, self._store.project_dir(pid)
         orig, stems = self._load_audio(pdir)
         src, analysis = analyze(orig, stems, SAMPLE_RATE, self._renderer)
         store.set_project_progress(pid, ANALYZED_PROGRESS)

@@ -1,6 +1,7 @@
 """HTTP 接口（SPEC §7）。只监听 127.0.0.1；Host 白名单防 DNS 重绑定；跨站的写请求一律拒绝。"""
 
 import hashlib
+import io
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -21,10 +22,12 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from orbit8d import __version__
 from orbit8d.assets import ensure_hrtf_sofa
 from orbit8d.config import REPO_ROOT, SAMPLE_RATE, Settings
+from orbit8d.engine.choreo import choreograph
 from orbit8d.engine.hrtf import load_grid, to_bytes
-from orbit8d.engine.pipeline import Renderer
-from orbit8d.engine.reverb import ROOMS
+from orbit8d.engine.pipeline import RENDER_VERSION, Analysis, Renderer
+from orbit8d.engine.reverb import BRIR_VERSION, ROOMS
 from orbit8d.engine.scene import PRESETS, Scene, canonical_json, preset
+from orbit8d.engine.structure import SectionInfo
 from orbit8d.jobs.states import ExportState, ProjectState
 from orbit8d.jobs.store import ExportRecord, NotFound, ProjectRecord, Store
 from orbit8d.jobs.worker import PREVIEW_DIR, SOURCE_FILE, JobRunner, Separator, safe_name
@@ -56,6 +59,11 @@ class ExportRequest(BaseModel):
     format: Literal["m4a", "mp3", "flac", "wav", "ogg"]
 
 
+class EqRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scene: Scene
+
+
 class LocalOriginMiddleware:
     """浏览器发起的跨站写请求一定带 Origin；不在白名单里的直接 403（防 CSRF）。"""
 
@@ -83,6 +91,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         renderer = Renderer(grid)
         runner = JobRunner(store, renderer, separator)
         store.recover_interrupted()
+        runner.refresh_stale()
         runner.start()
         app.state.store, app.state.runner, app.state.renderer = store, runner, renderer
         app.state.hrtf_bytes = to_bytes(grid)
@@ -193,6 +202,27 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     def get_project(pid: str) -> dict:
         return store.get_project(pid).to_dict()
 
+    def ready_analysis(pid: str) -> Analysis:
+        rec = store.get_project(pid)
+        if rec.state is not ProjectState.READY:
+            raise ApiError(409, "PROJECT_NOT_READY", "还在处理中")
+        return Analysis(**rec.analysis)
+
+    @app.get("/api/projects/{pid}/choreography")
+    def get_choreography(pid: str) -> dict:
+        """按自动识别的段落编排好的场景（前端“自动编排”按钮、新项目的默认场景）。"""
+        a = ready_analysis(pid)
+        sections = [SectionInfo(**d) for d in a.sections]
+        return choreograph(sections, a.default_bars, a.bpm_norm).model_dump(mode="json")
+
+    @app.post("/api/projects/{pid}/eq")
+    def post_scene_eq(request: Request, pid: str, body: EqRequest) -> Response:
+        """这个场景的音色补偿 EQ（单声道 float32 WAV 冲激响应），浏览器试听与导出用同一个。"""
+        fir = request.app.state.renderer.scene_eq(body.scene, ready_analysis(pid))
+        buf = io.BytesIO()
+        sf.write(buf, fir.astype("float32"), SAMPLE_RATE, format="WAV", subtype="FLOAT")
+        return Response(buf.getvalue(), media_type="audio/wav")
+
     @app.get("/api/projects/{pid}/stems/{name}.flac")
     def get_stem(pid: str, name: str) -> FileResponse:
         rec = store.get_project(pid)
@@ -214,16 +244,13 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
             tmp.replace(path)
         return path
 
-    @app.get("/api/assets/eq.wav")
-    def get_eq(request: Request) -> FileResponse:
-        path = cached_wav(f"eq_{SAMPLE_RATE}.wav", lambda: request.app.state.renderer.eq.astype("float32"))
-        return FileResponse(path, media_type="audio/wav")
-
     @app.get("/api/assets/brir/{room}.wav")
     def get_brir(request: Request, room: str) -> FileResponse:
         if room not in ROOMS:
             raise NotFound(room)
-        path = cached_wav(f"brir_{room}_{SAMPLE_RATE}.wav", lambda: request.app.state.renderer.brir(room).T)
+        path = cached_wav(
+            f"brir_v{BRIR_VERSION}_{room}_{SAMPLE_RATE}.wav", lambda: request.app.state.renderer.brir(room).T
+        )
         return FileResponse(path, media_type="audio/wav")
 
     @app.post("/api/projects/{pid}/exports")
@@ -233,7 +260,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
             raise ApiError(409, "PROJECT_NOT_READY", "还在处理中")
         if body.format not in available_formats():
             raise ApiError(422, "UNSUPPORTED_FORMAT", f"本机 ffmpeg 不支持 {body.format}")
-        key = f"{pid}|{canonical_json(body.scene)}|{body.format}"
+        key = f"v{RENDER_VERSION}|{pid}|{canonical_json(body.scene)}|{body.format}"
         eid = hashlib.sha256(key.encode()).hexdigest()[:ID_LEN]
         rec, created = store.create_export_if_absent(
             ExportRecord(

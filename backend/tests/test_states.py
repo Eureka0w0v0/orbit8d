@@ -22,6 +22,7 @@ from orbit8d.jobs.states import (
         (ProjectState.ANALYZING, ProjectState.READY),
         (ProjectState.SEPARATING, ProjectState.FAILED),
         (ProjectState.FAILED, ProjectState.DECODING),
+        (ProjectState.READY, ProjectState.ANALYZING),
         (ExportState.QUEUED, ExportState.RENDERING),
         (ExportState.RENDERING, ExportState.ENCODING),
         (ExportState.ENCODING, ExportState.DONE),

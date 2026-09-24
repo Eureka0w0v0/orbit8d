@@ -196,6 +196,15 @@ class Store:
                 return
             self.transition_export(eid, ExportState.FAILED, error={"code": code, "message": message})
 
+    def stale_projects(self, version: int) -> list[ProjectRecord]:
+        """已就绪、但分析结果版本低于 version 的项目（旧版分析没有 version 字段，按 1 算）。"""
+        out = []
+        for path in self.settings.projects_dir.glob(f"*/{RECORD_FILE}"):
+            rec = ProjectRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
+            if rec.state is ProjectState.READY and (rec.analysis or {}).get("version", 1) < version:
+                out.append(rec)
+        return out
+
     # ---- 启动恢复：上次没跑完的任务一律标记为中断 ----
     def recover_interrupted(self) -> None:
         for path in self.settings.projects_dir.glob(f"*/{RECORD_FILE}"):

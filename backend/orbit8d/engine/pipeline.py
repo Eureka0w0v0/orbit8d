@@ -1,6 +1,7 @@
-"""整曲管线（SPEC §5）：声源准备 → 分析（测速、校准）→ 按场景渲染 → 母带。
+"""整曲管线（SPEC §5、§13）：声源准备 → 分析（测速、校准、音色锚点、段落）→ 按场景渲染 → 母带。
 
-导出与试听共用：试听用的声源文件（preview_stems）、校准增益、试听总增益都在分析阶段一次算好。
+导出与试听共用：试听用的声源文件（preview_stems）、校准增益、试听总增益、音色补偿都在分析阶段算好；
+按场景的 EQ 由同一个函数给导出和浏览器试听（/api/projects/{id}/eq）。
 """
 
 import json
@@ -10,7 +11,7 @@ import numpy as np
 from scipy.signal import butter, oaconvolve, sosfiltfilt
 
 from orbit8d.engine.hrtf import HrtfGrid, interpolate
-from orbit8d.engine.master import apply_eq, diffuse_eq, limiter, master_gain
+from orbit8d.engine.master import apply_eq, design_eq, diffuse_gain_db, limiter, master_gain, with_band_gains
 from orbit8d.engine.render import (
     BLOCK,
     BlockPath,
@@ -24,14 +25,18 @@ from orbit8d.engine.render import (
 )
 from orbit8d.engine.reverb import synth_brir
 from orbit8d.engine.scene import TRACKS, Room, Scene, effective_track_gains, preset
+from orbit8d.engine.structure import detect_sections
 from orbit8d.engine.tempo import estimate_tempo, turn_plan
 from orbit8d.engine.timeline import compile_track, track_position, wet_db_curve
+from orbit8d.engine.tone import BANDS_HZ, ToneModel, match_gain_db, scene_eq_db, source_spectra
 
 CROSSOVER_HZ = 120.0
 LOW_SPLIT_TRACKS = ("bass", "drums", "other")  # 人声不分频
 STEREO_TRACKS = ("drums", "other")  # 渲染成一对声源
 CALIBRATION_KEYS = (*TRACKS, "sub")
 REFERENCE_PRESET = "classic"
+ANALYSIS_VERSION = 2  # 分析结果的内容变了就加一：旧项目启动时自动重新分析（不重新分轨）
+RENDER_VERSION = 2  # 渲染算法变了就加一：同一场景的旧导出不再复用
 EPS = 1e-12
 
 
@@ -58,6 +63,10 @@ class Analysis:
     t_ref: float
     calibration: dict[str, float]
     preview_gain: float
+    match_eq_db: list[float]  # 音色锚点：经典场景下各 1/3 倍频程的校正量
+    spectra: dict[str, list[float]]  # 各路声源的频带功率（按场景预测染色用）
+    sections: list[dict]  # 自动识别的段落（structure.SectionInfo）
+    version: int = ANALYSIS_VERSION
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -102,7 +111,9 @@ class Renderer:
         self.grid = grid
         self.spectra = grid_spectra(grid)
         self.front = interpolate(grid, np.array([0.0]), np.array([0.0]))[0]
-        self.eq = diffuse_eq(grid)
+        self.eq_freqs, self.eq_base_db = diffuse_gain_db(grid)
+        self.eq = design_eq(self.eq_freqs, self.eq_base_db, grid.sample_rate)  # 只有 HRTF 平均补偿
+        self.tone = ToneModel(grid)
         self._brirs: dict[str, np.ndarray] = {}
 
     def brir(self, room: str) -> np.ndarray:
@@ -172,11 +183,24 @@ class Renderer:
         brir = self.brir(room.name).astype(np.float64)
         return np.stack([oaconvolve(send, brir[ear])[: len(send)] for ear in (0, 1)], axis=1)
 
+    def band_eq(self, band_db: np.ndarray) -> np.ndarray:
+        """HRTF 平均补偿 + 按频带的校正 → FIR。"""
+        gain = with_band_gains(
+            self.eq_freqs, self.eq_base_db, BANDS_HZ, np.asarray(band_db, dtype=np.float64)
+        )
+        return design_eq(self.eq_freqs, gain, self.grid.sample_rate)
+
+    def scene_eq(self, scene: Scene, analysis: Analysis) -> np.ndarray:
+        """这个场景的补偿 EQ（导出与浏览器试听共用）。"""
+        ref = preset(REFERENCE_PRESET, analysis.default_bars)
+        brirs = {name: self.brir(name) for name in {scene.room.name, ref.room.name}}
+        return self.band_eq(scene_eq_db(self.tone, scene, ref, analysis, brirs))
+
     def render_mix(self, src: Sources, scene: Scene, analysis: Analysis) -> np.ndarray:
-        """未经母带的完整混音（干声 + 混响，已过补偿 EQ）。"""
+        """未经母带的完整混音（干声 + 混响，已过按场景的补偿 EQ）。"""
         tracks = self.render_tracks(src, scene, analysis.bpm_norm, analysis.t_ref, analysis.calibration)
         wet = self.reverb(self.send_signal(src, scene, analysis.calibration, analysis.bpm_norm), scene.room)
-        return apply_eq(sum(tracks.values()) + wet, self.eq)
+        return apply_eq(sum(tracks.values()) + wet, self.scene_eq(scene, analysis))
 
     def export(self, src: Sources, scene: Scene, analysis: Analysis) -> np.ndarray:
         mix = self.render_mix(src, scene, analysis)
@@ -184,9 +208,10 @@ class Renderer:
         return limiter(mix, src.sr)[0]
 
     def calibrate(
-        self, src: Sources, bpm_norm: float, t_ref: float, default_bars: int
-    ) -> tuple[dict[str, float], float]:
-        """用“经典 8D”预设渲染一次：每轨校准增益 = √(原始能量 / 渲染能量)；再算试听总增益。"""
+        self, src: Sources, orig: np.ndarray, bpm_norm: float, t_ref: float, default_bars: int
+    ) -> tuple[dict[str, float], np.ndarray, float]:
+        """用“经典 8D”预设渲染一次：每轨校准增益 = √(原始能量 / 渲染能量)；
+        与原曲比长期平均谱得到音色锚点；再算试听总增益。"""
         ref = preset(REFERENCE_PRESET, default_bars)
         tracks = self.render_tracks(src, ref, bpm_norm, t_ref, dict.fromkeys(CALIBRATION_KEYS, 1.0))
         targets = {**src.energy_hi, "sub": src.energy_sub}
@@ -197,8 +222,9 @@ class Renderer:
                 float(np.sqrt(targets[key] / rendered)) if rendered > EPS and targets[key] > EPS else 1.0
             )
         dry = sum(cal[key] * tracks[key] for key in CALIBRATION_KEYS)
-        mix = apply_eq(dry + self.reverb(self.send_signal(src, ref, cal, bpm_norm), ref.room), self.eq)
-        return cal, master_gain(mix, src.sr)
+        raw = dry + self.reverb(self.send_signal(src, ref, cal, bpm_norm), ref.room)
+        anchor = match_gain_db(orig, apply_eq(raw, self.eq), src.sr)
+        return cal, anchor, master_gain(apply_eq(raw, self.band_eq(anchor)), src.sr)
 
 
 def analyze(
@@ -207,7 +233,8 @@ def analyze(
     src = prepare_sources(orig, stems, sr)
     info = estimate_tempo(stems["drums"].mean(axis=1), sr)
     bars, t_ref = turn_plan(info)
-    calibration, preview_gain = renderer.calibrate(src, info.bpm_norm, t_ref, bars)
+    calibration, anchor, preview_gain = renderer.calibrate(src, orig, info.bpm_norm, t_ref, bars)
+    sections = detect_sections(orig, stems["vocals"], sr, info.bpm_norm, t_ref)
     return src, Analysis(
         sample_rate=sr,
         duration_s=len(orig) / sr,
@@ -217,4 +244,7 @@ def analyze(
         t_ref=t_ref,
         calibration=calibration,
         preview_gain=preview_gain,
+        match_eq_db=[float(v) for v in anchor],
+        spectra=source_spectra(src.hi, src.sub, sr),
+        sections=[s.to_dict() for s in sections],
     )

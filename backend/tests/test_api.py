@@ -12,7 +12,8 @@ from fastapi.testclient import TestClient
 
 from orbit8d.api.app import create_app
 from orbit8d.config import load_settings
-from orbit8d.engine.scene import Scene
+from orbit8d.engine.pipeline import ANALYSIS_VERSION
+from orbit8d.engine.scene import Scene, preset
 from tests.conftest import FakeSeparator, write_song
 
 BASE = "http://127.0.0.1:8765"
@@ -125,8 +126,7 @@ def test_malformed_ids_are_not_found(client, bad_id):
 def test_assets_are_served(client):
     hrtf = client.get("/api/assets/hrtf.bin")
     assert hrtf.status_code == 200 and hrtf.content[:4] == b"O8DH"
-    eq, _ = sf.read(io.BytesIO(client.get("/api/assets/eq.wav").content))
-    assert eq.ndim == 1 and len(eq) == 1025
+    assert client.get("/api/assets/eq.wav").status_code != 200  # 已改为按项目、按场景的 EQ
     brir, sr = sf.read(io.BytesIO(client.get("/api/assets/brir/room.wav").content), always_2d=True)
     assert sr == 44100 and brir.shape[1] == 2
     assert client.get("/api/assets/brir/stadium.wav").status_code == 404
@@ -224,3 +224,56 @@ def test_scene_schema_exposes_parameter_ranges(client):
 def test_presets_list_endpoint(client):
     names = client.get("/api/presets").json()
     assert names == ["classic", "singer", "dual", "tumble", "single", "layers", "diagonal", "cross"]
+
+
+def test_analysis_has_sections_tone_anchor_and_version(client, ready_project):
+    analysis = client.get(f"/api/projects/{ready_project}").json()["analysis"]
+    assert analysis["version"] == ANALYSIS_VERSION and len(analysis["match_eq_db"]) == 27
+    assert analysis["sections"][0]["start_s"] == 0.0 and {"vocals", "drums_L", "other_M"} <= set(
+        analysis["spectra"]
+    )
+
+
+def test_choreography_endpoint_returns_a_valid_scene(client, ready_project):
+    resp = client.get(f"/api/projects/{ready_project}/choreography")
+    assert resp.status_code == 200
+    scene = Scene.model_validate(resp.json())
+    assert scene.sections[0].start_s == 0.0
+    assert client.get("/api/projects/0123456789abcdef/choreography").status_code == 404
+
+
+def test_scene_eq_depends_on_the_scene(client, ready_project):
+    def fir(scene):
+        resp = client.post(f"/api/projects/{ready_project}/eq", json={"scene": scene.model_dump(mode="json")})
+        assert resp.status_code == 200 and resp.headers["content-type"] == "audio/wav"
+        data, sr = sf.read(io.BytesIO(resp.content))
+        assert sr == 44100 and data.ndim == 1 and len(data) == 1025
+        return data
+
+    bars = client.get(f"/api/projects/{ready_project}").json()["analysis"]["default_bars"]
+    classic, again, layers = (
+        fir(preset("classic", bars)),
+        fir(preset("classic", bars)),
+        fir(preset("layers", bars)),
+    )
+    assert np.array_equal(classic, again) and not np.allclose(classic, layers)
+    bad = {"scene": {**preset("classic", bars).model_dump(mode="json"), "rear_darken_db": 99}}
+    assert client.post(f"/api/projects/{ready_project}/eq", json=bad).status_code == 422
+
+
+def test_stale_projects_are_reanalyzed_on_startup_without_reseparating(client, ready_project, data_dir):
+    """模拟 v1 时代分析的项目：重启后自动转回“分析中”，重新分析但不重新分轨，完成后可用。"""
+    import json
+
+    record = data_dir / "projects" / ready_project / "record.json"
+    data = json.loads(record.read_text())
+    for key in ("version", "match_eq_db", "spectra", "sections"):
+        data["analysis"].pop(key)
+    record.write_text(json.dumps(data))
+    separator = FakeSeparator()
+    with TestClient(create_app(load_settings(), separator), base_url=BASE) as fresh:
+        assert fresh.get(f"/api/projects/{ready_project}").json()["state"] in ("ANALYZING", "READY")
+        assert fresh.app.state.runner.wait_idle(WAIT_S)
+        body = fresh.get(f"/api/projects/{ready_project}").json()
+    assert body["state"] == "READY" and body["analysis"]["version"] == ANALYSIS_VERSION
+    assert separator.calls == 0
