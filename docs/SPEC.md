@@ -206,16 +206,42 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | engine.render | 固定方向与直接卷积；块 32 vs 16 | < −100 dB；< −45 dB |
 | engine.pipeline | 超低频正前方；时长 | <100 Hz 两耳相关 > 0.999；样本数相等 |
 | engine.master | 限幅后真峰值 | ≤ −1.0 dBTP |
-| web audio core | 黄金渲染用例（合成 HRIR 网格 + 0.5 s 噪声） | 与 Python 输出差异 < −90 dB |
+| web audio core | 黄金渲染用例（合成 HRIR 网格 + 9 路 8192 采样噪声） | 与 Python 输出差异 < −90 dB |
+| web scene/mapping | 方向↔世界坐标互逆、局部→世界与轨道公式一致、由位置反推相位 | < 1e-6 |
 | jobs.states | 非法跳转 | 抛 IllegalTransition，状态不变 |
 | api | 非音频 / 超大 / 危险文件名 / 非法 Host | 400 / 413 / 不落盘 / 400 |
 | api | 同参数重复导出 | 同一导出 ID |
 | e2e | 10 s 音频上传 → 就绪 → 五种格式导出 | ffprobe 可读、时长一致 |
 
-## 10. 不在 v1 范围
+## 10. 界面（web/）
+
+### 10.1 界面阶段状态机（`src/app.ts`）
+| 当前 | 允许的下一个 |
+|---|---|
+| booting | empty, loading, error |
+| empty | uploading |
+| uploading | processing, loading, error |
+| processing | loading, error |
+| loading | ready, error |
+| ready | uploading |
+| error | uploading, empty |
+
+非法跳转抛错；`ready` 阶段的非致命错误（如预设加载失败）用提示条显示，不改变阶段。刷新页面时用 localStorage 里的上次项目 ID 自动恢复（存储不可用时忽略）。
+
+### 10.2 3D 场景
+- 世界坐标与音频坐标：人头面朝世界 +z，听者右侧 = 世界 −x，`world = (−x, y, z)`（`src/scene/mapping.ts`）。
+- 人头模型标定：模型坐标里两耳外缘中点 (−0.087, 1.504, −0.162)、耳距 3.62，缩放到耳距 0.18 并把中点放到原点。
+- 距离可视化：`visual = 0.32 · √(d / 0.5)`（d ∈ [0.5, 4] m），地面同心圈对应 0.5 / 1 / 2 / 4 m。
+- 把手：轨道相位 270°（左侧）= 距离，0°（正前）= 前后倾斜，90°（右侧）= 左右倾斜；暂停时拖小球改起点（仅圆 / 椭圆 / 螺旋 / 固定，相位可由位置反推）。
+- 辉光阈值 1.4：只有发光小球泛光，白模不泛光。
+
+### 10.3 试听引擎
+9 声道缓冲（vocals_hi, bass_hi, drums_hi L/R, other_hi L/R, bass_sub, drums_sub, other_sub）→ AudioWorklet（输出 0 = 双耳干声，输出 1 = 混响送出）→ BRIR 卷积 × wet → 补偿 EQ 卷积 → 试听总增益 → DynamicsCompressor 兜底 → 输出；并联两路 AnalyserNode 驱动左右电平表。ConvolverNode 一律 `normalize = false`。
+
+## 11. 不在 v1 范围
 自由画路径与时间轴自动化、桌面 App 打包、头部追踪、导入自定义 HRTF、手机端。
 
-## 11. 第三方素材
+## 12. 第三方素材
 - 人头模型：“Infinite, 3D Head Scan” by Lee Perry-Smith，CC BY 3.0（`web/public/models/LeePerrySmith_License.txt`）。
-- HRTF：TH Köln，“A Spherical Far Field HRIR/HRTF Compilation of the Neumann KU 100”（B. Bernschütz）。
+- HRTF：TH Köln，“A Spherical Far Field HRIR/HRTF Compilation of the Neumann KU 100”（B. Bernschütz），CC BY-SA 3.0，不随仓库分发。
 - 分轨模型：Demucs（Meta，MIT）。

@@ -5,7 +5,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 export const HEAD_MODEL_URL = "/models/LeePerrySmith.glb";
 
-// 该模型自身坐标里的标定值（由模型顶点分析得到，见 docs/SPEC.md §11）
+// 该模型自身坐标里的标定值（由模型顶点分析得到，见 docs/SPEC.md §10.2）
 const MODEL_EAR_MID = new THREE.Vector3(-0.087, 1.504, -0.162);
 const MODEL_EAR_SPAN = 3.62;
 const TARGET_EAR_SPAN = 0.18; // 世界单位 ≈ 米
