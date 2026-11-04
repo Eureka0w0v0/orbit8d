@@ -79,6 +79,12 @@ export const ja: Messages = {
     download: "ダウンロード",
     close: "閉じる",
     retry: "ファイルを選び直す",
+    recentSongs: "最近の曲",
+    songMenuTitle: "読み込んだ曲を切り替え・削除",
+    deleteSong: "削除",
+    deleteConfirm: "もう一度押すと削除",
+    deleteSongTitle: "この曲と書き出したファイルを削除します（パソコン上の元ファイルはそのまま）",
+    songDeleted: (title: string) => `「${title}」を削除しました`,
     presets: "プリセット",
     tracks: "トラック",
     room: "ルーム",
@@ -128,7 +134,7 @@ export const ja: Messages = {
     listSep: "、",
     credits: "頭部モデル：Infinite, 3D Head Scan by Lee Perry-Smith（CC BY 3.0）· HRTF：TH Köln Neumann KU100",
   },
-  unit: { secondsPerTurn: (v: string) => `${v} 秒/周`, bars: (n: number) => `${n} 小節` },
+  unit: { secondsPerTurn: (v: string) => `${v} 秒/周`, bars: (n: number) => `${n} 小節`, megabytes: (v: string) => `${v} MB` },
   edit: {
     maxSections: (n: number) => `セクションは最大 ${n} 個です`,
     tooClose: "セクションの境界に近すぎます（各セクションは 1 小節以上必要です）",
@@ -159,5 +165,6 @@ export const ja: Messages = {
     INTERRUPTED: "前回の処理が中断されました。もう一度読み込むと再試行します",
     INTERNAL: "内部エラーが発生しました",
     STATE_CONFLICT: "状態が競合しました。もう一度お試しください",
+    PROJECT_BUSY: "この曲はまだ処理中です。終わってから削除してください",
   },
 };

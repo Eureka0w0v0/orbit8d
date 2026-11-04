@@ -6,6 +6,7 @@ import urllib.request
 from pathlib import Path
 
 from orbit8d.config import load_settings
+from orbit8d.engine.reverb import BRIR_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +48,27 @@ def ensure_hrtf_sofa(assets_dir: Path) -> Path:
     finally:
         part.unlink(missing_ok=True)
     return target
+
+
+def prune_stale_assets(assets_dir: Path) -> int:
+    """删掉不再使用的旧缓存：全局 EQ（已改为按项目、按场景）、旧版本的 BRIR、没写完的临时文件。
+    返回删了几个。"""
+    current = f"brir_v{BRIR_VERSION}_"
+    stale = [
+        path
+        for path in assets_dir.glob("*")
+        if path.is_file()
+        and (
+            path.name.startswith("eq_")
+            or (path.name.startswith("brir_") and not path.name.startswith(current))
+            or ".tmp" in path.name
+            or path.suffix == ".part"
+        )
+    ]
+    for path in stale:
+        path.unlink()
+        log.info("stale asset removed", extra={"event": "asset.prune", "file": path.name})
+    return len(stale)
 
 
 def main() -> None:

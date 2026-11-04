@@ -76,6 +76,12 @@ export const zh = {
     download: "下载",
     close: "关闭",
     retry: "重新选择文件",
+    recentSongs: "最近的歌",
+    songMenuTitle: "切换或删除已导入的歌",
+    deleteSong: "删除",
+    deleteConfirm: "再点一次删除",
+    deleteSongTitle: "删除这首歌和它的导出（不会动你电脑上的原文件）",
+    songDeleted: (title: string) => `已删除「${title}」`,
     presets: "一键预设",
     tracks: "音轨",
     room: "房间",
@@ -123,7 +129,7 @@ export const zh = {
     listSep: "、",
     credits: "人头模型：Infinite, 3D Head Scan by Lee Perry-Smith（CC BY 3.0）· HRTF：TH Köln Neumann KU100",
   },
-  unit: { secondsPerTurn: (v: string) => `${v} 秒/圈`, bars: (n: number) => `${n} 小节` },
+  unit: { secondsPerTurn: (v: string) => `${v} 秒/圈`, bars: (n: number) => `${n} 小节`, megabytes: (v: string) => `${v} MB` },
   edit: {
     maxSections: (n: number) => `最多 ${n} 段`,
     tooClose: "离段落边界太近（每段至少 1 小节）",
@@ -154,6 +160,7 @@ export const zh = {
     INTERRUPTED: "上次处理被中断，重新导入即可重试",
     INTERNAL: "内部错误",
     STATE_CONFLICT: "状态冲突，请重试",
+    PROJECT_BUSY: "这首歌还在处理中，处理完再删",
   },
 };
 

@@ -1,6 +1,6 @@
 // 后端 HTTP 接口（docs/SPEC.md §7）。所有失败都抛 ApiError，调用方负责给用户看得懂的提示。
 
-import type { ApiErrorBody, Bars, ExportFormat, ExportRecord, Project, RoomName, Scene } from "./types";
+import type { ApiErrorBody, Bars, ExportFormat, ExportRecord, Project, ProjectSummary, RoomName, Scene } from "./types";
 
 export class ApiError extends Error {
   readonly code: string;
@@ -37,10 +37,17 @@ export const api = {
   presets: () => getJson<string[]>("/api/presets"),
   preset: (name: string, bars: Bars) => getJson<Scene>(`/api/presets/${name}?bars=${bars}`),
   project: (id: string) => getJson<Project>(`/api/projects/${id}`),
+  projects: () => getJson<ProjectSummary[]>("/api/projects"),
+
+  /** 删除这首歌和它的导出；还在处理中时后端返回 409 PROJECT_BUSY。 */
+  async deleteProject(id: string): Promise<void> {
+    await check(await fetch(`/api/projects/${id}`, { method: "DELETE" }));
+  },
   stem: (id: string, name: string) => getBytes(`/api/projects/${id}/stems/${name}.flac`),
   hrtf: () => getBytes("/api/assets/hrtf.bin"),
   brir: (room: RoomName) => getBytes(`/api/assets/brir/${room}.wav`),
   choreography: (id: string) => getJson<Scene>(`/api/projects/${id}/choreography`),
+
 
   /** 这首歌上次保存的场景；没保存过返回 null。 */
   async savedScene(id: string): Promise<Scene | null> {

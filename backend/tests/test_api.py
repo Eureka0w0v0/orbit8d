@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 from fastapi.testclient import TestClient
+from scipy.signal import butter, sosfiltfilt
 
 from orbit8d.api.app import create_app
 from orbit8d.config import load_settings
@@ -310,3 +311,156 @@ def test_scene_is_saved_per_project_and_validated(client, ready_project):
     assert resp.status_code == 413
     assert client.put("/api/projects/0123456789abcdef/scene", json=scene).status_code == 404
     assert client.put(url, json=scene, headers={"Origin": "https://evil.example"}).status_code == 403
+
+
+# ---------- 存储与删除（SPEC §5.7、§7） ----------
+
+
+def test_new_project_stores_flac_stems_and_no_decoded_wav(client, ready_project, data_dir):
+    pdir = data_dir / "projects" / ready_project
+    record = client.get(f"/api/projects/{ready_project}").json()
+    assert not (pdir / "orig.wav").exists() and not list((pdir / "stems").glob("*.wav"))
+    assert sorted(p.name for p in (pdir / "stems").glob("*.flac")) == [
+        "bass.flac",
+        "drums.flac",
+        "other.flac",
+        "vocals.flac",
+    ]
+    assert set(record["stem_scales"]) == {"vocals", "drums", "bass", "other"}
+    assert all(v >= 1.0 for v in record["stem_scales"].values())
+
+
+def test_stems_round_trip_through_flac_with_their_scale(client, data_dir, tmp_path):
+    """峰值超过 1 的分轨也能无损（24 位量化以内）存取。"""
+    song = tmp_path / "loud.wav"
+    write_song(song)
+    x, sr = sf.read(song, always_2d=True)
+    sf.write(song, x * 6.0, sr, subtype="FLOAT")  # 远超满幅：贝斯分轨峰值约 1.5
+    pid = upload(client, song).json()["id"]
+    wait_idle(client)
+    record = client.get(f"/api/projects/{pid}").json()
+    assert record["state"] == "READY" and record["stem_scales"]["bass"] > 1.0
+    from orbit8d.jobs.store import ProjectRecord
+    from orbit8d.jobs.worker import JobRunner
+
+    rec = ProjectRecord.from_dict(record)
+    pdir = data_dir / "projects" / pid
+    bass = np.concatenate([w.body for w in JobRunner._stem_file(pdir, "bass", rec).windows()])
+    expected = sosfiltfilt(butter(4, 150, "lowpass", fs=sr, output="sos"), x * 6.0, axis=0)
+    assert np.abs(bass - expected).max() < 4 * record["stem_scales"]["bass"] / 2**23
+
+
+def test_old_storage_is_migrated_on_startup_and_stays_usable(client, ready_project, data_dir):
+    """旧版项目（WAV 分轨 + 常驻 orig.wav）：重启后迁移成 FLAC、删掉 orig.wav，仍能重新分析与导出。"""
+    import json
+
+    pdir = data_dir / "projects" / ready_project
+    record_path = pdir / "record.json"
+    data = json.loads(record_path.read_text())
+    for name in ("vocals", "drums", "bass", "other"):
+        flac = pdir / "stems" / f"{name}.flac"
+        x, sr = sf.read(flac, always_2d=True)
+        sf.write(pdir / "stems" / f"{name}.wav", x * data["stem_scales"][name], sr, subtype="FLOAT")
+        flac.unlink()
+    sf.write(pdir / "orig.wav", np.zeros((sr, 2)), sr, subtype="FLOAT")
+    data["stem_scales"] = {}
+    data["analysis"]["version"] = 1  # 同时需要重新分析：迁移先跑
+    record_path.write_text(json.dumps(data))
+    with TestClient(create_app(load_settings(), FakeSeparator()), base_url=BASE) as fresh:
+        assert fresh.app.state.runner.wait_idle(WAIT_S)
+        body = fresh.get(f"/api/projects/{ready_project}").json()
+        resp = fresh.post(
+            f"/api/projects/{ready_project}/exports", json={"scene": Scene().model_dump(), "format": "wav"}
+        )
+        assert fresh.app.state.runner.wait_idle(WAIT_S)
+        assert fresh.get(f"/api/exports/{resp.json()['id']}").json()["state"] == "DONE"
+    assert body["state"] == "READY" and body["analysis"]["version"] == ANALYSIS_VERSION
+    assert not list((pdir / "stems").glob("*.wav")) and not (pdir / "orig.wav").exists()
+    assert set(body["stem_scales"]) == {"vocals", "drums", "bass", "other"}
+
+
+def test_migration_keeps_the_wav_when_verification_fails(client, ready_project, data_dir, monkeypatch):
+    from orbit8d.jobs import worker
+
+    pdir = data_dir / "projects" / ready_project
+    flac = pdir / "stems" / "vocals.flac"
+    x, sr = sf.read(flac, always_2d=True)
+    sf.write(pdir / "stems" / "vocals.wav", x, sr, subtype="FLOAT")
+
+    def broken_verify(original, copy, tolerance):
+        raise ValueError("simulated corruption")
+
+    monkeypatch.setattr(worker, "_verify_copy", broken_verify)
+    runner = client.app.state.runner
+    assert runner.migrate_storage() == 1
+    wait_idle(client)
+    assert (pdir / "stems" / "vocals.wav").exists()  # 校验没过，原文件保留
+
+
+def test_projects_are_listed_most_recent_first(client, ready_project, tmp_path):
+    second = upload(client, write_song(tmp_path / "other.wav", seed=3), "Other.wav").json()["id"]
+    wait_idle(client)
+    client.put(f"/api/projects/{ready_project}/scene", json=Scene().model_dump(mode="json"))
+    items = client.get("/api/projects").json()
+    assert [item["id"] for item in items] == [ready_project, second]
+    first = items[0]
+    assert first["title"] == "My Song" and first["state"] == "READY"
+    assert first["duration_s"] == pytest.approx(6.0, abs=0.01) and first["size_bytes"] > 100_000
+
+
+def test_deleting_a_song_removes_it_and_its_exports(client, ready_project, data_dir, tmp_path):
+    resp = client.post(
+        f"/api/projects/{ready_project}/exports", json={"scene": Scene().model_dump(), "format": "wav"}
+    )
+    wait_idle(client)
+    eid = resp.json()["id"]
+    assert client.delete(f"/api/projects/{ready_project}").status_code == 204
+    assert client.get(f"/api/projects/{ready_project}").status_code == 404
+    assert client.get(f"/api/exports/{eid}").status_code == 404
+    assert not (data_dir / "projects" / ready_project).exists() and not list((data_dir / "trash").iterdir())
+    assert client.get("/api/projects").json() == []
+    assert client.delete(f"/api/projects/{ready_project}").status_code == 404
+    again = upload(client, write_song(tmp_path / "song.wav"), "My Song.wav")
+    assert again.status_code == 202 and again.json()["id"] == ready_project  # 删了可以重新导入同一个文件
+    wait_idle(client)
+
+
+def test_deleting_is_refused_while_the_song_has_jobs(client, ready_project, monkeypatch):
+    """有排队或正在跑的任务时不删（409），任务结束后可以删。"""
+    import threading
+
+    started, release = threading.Event(), threading.Event()
+    runner = client.app.state.runner
+
+    def slow_migrate(pid):
+        started.set()
+        release.wait(WAIT_S)
+
+    monkeypatch.setattr(runner, "_run_migrate", slow_migrate)
+    runner.submit("migrate", ready_project, ready_project)
+    assert started.wait(WAIT_S)
+    try:
+        resp = client.delete(f"/api/projects/{ready_project}")
+        assert resp.status_code == 409 and resp.json()["code"] == "PROJECT_BUSY"
+    finally:
+        release.set()
+        wait_idle(client)
+    cross = client.delete(f"/api/projects/{ready_project}", headers={"Origin": "https://evil.example"})
+    assert cross.status_code == 403 and client.get(f"/api/projects/{ready_project}").status_code == 200
+    assert client.delete("/api/projects/0123456789abcdef").status_code == 404
+    assert client.delete("/api/projects/not-an-id").status_code == 404
+    assert client.delete(f"/api/projects/{ready_project}").status_code == 204
+
+
+def test_startup_cleans_trash_uploads_and_stale_assets(data_dir):
+    (data_dir / "trash" / "project-x").mkdir(parents=True)
+    (data_dir / "uploads").mkdir(parents=True, exist_ok=True)
+    (data_dir / "uploads" / "half.part").write_bytes(b"x")
+    for name in ("eq_44100.wav", "brir_hall_44100.wav", "brir_v1_room_44100.wav", "hrtf.tmp"):
+        (data_dir / "assets" / name).write_bytes(b"x")
+    with TestClient(create_app(load_settings(), FakeSeparator()), base_url=BASE) as fresh:  # 启动时清理
+        assert fresh.get("/api/health").status_code == 200
+    assert not list((data_dir / "trash").iterdir()) and not list((data_dir / "uploads").iterdir())
+    left = {p.name for p in (data_dir / "assets").iterdir()}
+    assert not {"eq_44100.wav", "brir_hall_44100.wav", "brir_v1_room_44100.wav", "hrtf.tmp"} & left
+    assert any(name.endswith(".sofa") for name in left)  # HRTF 原始数据不动

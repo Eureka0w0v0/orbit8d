@@ -1,4 +1,9 @@
-"""单工位任务队列：分析与导出按提交顺序串行执行（分轨独占 GPU，也避免多份整曲数据同时占内存）。"""
+"""单工位任务队列：分析、导出、存储迁移按提交顺序串行执行（分轨独占 GPU，也避免多份整曲数据同时占内存）。
+
+存储（SPEC §5.7、§6）：分轨存 24 位 FLAC（每轨各自的缩放系数记在项目记录里，读回校验通过才删 WAV）；
+解码出的 orig.wav 只在分析期间存在，用完即删，要重新分析时从上传的原文件再解码。
+同一首歌有 WAV 就用 WAV：迁移中途崩溃时，WAV 只会在它的 FLAC 和缩放系数都写好之后才删。
+"""
 
 import json
 import logging
@@ -26,7 +31,7 @@ from orbit8d.engine.pipeline import (
 )
 from orbit8d.engine.scene import Scene
 from orbit8d.jobs.states import ExportState, IllegalTransition, ProjectState
-from orbit8d.jobs.store import Store
+from orbit8d.jobs.store import NotFound, ProjectRecord, Store
 from orbit8d.logging_setup import trace
 from orbit8d.media.audiofile import AudioFile, write_audio
 from orbit8d.media.ffmpeg import OUTPUT_FORMATS, MediaError, decode_to_wav, encode
@@ -42,7 +47,8 @@ ANALYSIS_FILE = "analysis.json"
 RENDER_FILE = "render.wav"
 OUTPUT_STEM = "output"
 STEM_NAMES = ("vocals", "drums", "bass", "other")
-PREVIEW_SUBTYPE = "PCM_24"
+PREVIEW_SUBTYPE = STEM_SUBTYPE = "PCM_24"
+FLAC_TOLERANCE_LSB = 4  # 24 位 FLAC 读回与原值的允许误差（量化 + 读写归一化差，实际约 1.5 个最低位）
 POLL_S = 0.2
 ANALYZED_PROGRESS = 0.7
 MAX_NAME = 100
@@ -55,8 +61,9 @@ class Separator(Protocol):
 
 @dataclass(frozen=True)
 class Job:
-    kind: str  # "analysis" | "refresh" | "export"
-    id: str
+    kind: str  # "analysis" | "refresh" | "migrate" | "export"
+    id: str  # 项目或导出的 ID
+    project_id: str  # 这个任务属于哪首歌（删歌前据此判断是否还有任务）
 
 
 def safe_name(text: str, fallback: str = "untitled") -> str:
@@ -92,6 +99,7 @@ class JobRunner:
         self._queue: queue.Queue[Job] = queue.Queue()
         self._stop = threading.Event()
         self._pending = 0
+        self._by_project: dict[str, int] = {}
         self._cond = threading.Condition()
         self._thread = threading.Thread(target=self._loop, name="orbit8d-worker", daemon=True)
 
@@ -102,21 +110,46 @@ class JobRunner:
         self._stop.set()
         self._thread.join(timeout)
 
-    def submit(self, kind: str, job_id: str) -> None:
+    def submit(self, kind: str, job_id: str, project_id: str) -> None:
         with self._cond:
             self._pending += 1
-        self._queue.put(Job(kind, job_id))
+            self._by_project[project_id] = self._by_project.get(project_id, 0) + 1
+        self._queue.put(Job(kind, job_id, project_id))
+
+    def busy(self, project_id: str) -> bool:
+        """这首歌还有排队或正在跑的任务。"""
+        with self._cond:
+            return self._by_project.get(project_id, 0) > 0
 
     def refresh_stale(self) -> int:
         """分析算法升级后：已就绪的旧项目转回“分析中”，排队重新分析（沿用已有分轨）。返回排队个数。"""
         stale = self._store.stale_projects(ANALYSIS_VERSION)
         for rec in stale:
             self._store.transition_project(rec.id, ProjectState.ANALYZING)
-            self.submit("refresh", rec.id)
+            self.submit("refresh", rec.id, rec.id)
             log.info(
                 "project queued for re-analysis", extra={"event": "project.refresh", "project_id": rec.id}
             )
         return len(stale)
+
+    def migrate_storage(self) -> int:
+        """旧版存储（分轨 WAV、常驻的 orig.wav）的已就绪项目排队迁移。返回排队个数。"""
+        old = [
+            rec
+            for rec in self._store.list_projects()
+            if rec.state is ProjectState.READY and self._unmigrated(rec.id)
+        ]
+        for rec in old:
+            self.submit("migrate", rec.id, rec.id)
+            log.info(
+                "project queued for storage migration",
+                extra={"event": "project.migrate", "project_id": rec.id},
+            )
+        return len(old)
+
+    def _unmigrated(self, pid: str) -> bool:
+        pdir = self._store.project_dir(pid)
+        return (pdir / ORIG_FILE).exists() or any((pdir / STEMS_DIR).glob("*.wav"))
 
     def wait_idle(self, timeout: float) -> bool:
         with self._cond:
@@ -133,12 +166,16 @@ class JobRunner:
             finally:
                 with self._cond:
                     self._pending -= 1
+                    left = self._by_project.pop(job.project_id, 1) - 1
+                    if left:
+                        self._by_project[job.project_id] = left
                     self._cond.notify_all()
 
     def _run(self, job: Job) -> None:
         handler, fail = {
             "analysis": (self._run_analysis, self._store.fail_project),
             "refresh": (self._run_refresh, self._store.fail_project),
+            "migrate": (self._run_migrate, self._store.fail_project),
             "export": (self._run_export, self._store.fail_export),
         }[job.kind]
         with trace(job.id):
@@ -146,6 +183,8 @@ class JobRunner:
             try:
                 handler(job.id)
                 log.info("job finished", extra={"event": "job.done", "kind": job.kind})
+            except NotFound:  # 不该发生（有任务的歌不能删）：记下来，不往已删的目录里写失败记录
+                log.error("job target is gone", exc_info=True, extra={"event": "job.gone", "kind": job.kind})
             except MediaError as exc:
                 log.warning("job media error", extra={"event": "job.media_error", "code": exc.code})
                 fail(job.id, exc.code, str(exc))
@@ -157,9 +196,32 @@ class JobRunner:
                 fail(job.id, "INTERNAL", f"{type(exc).__name__}: {exc}")
 
     @staticmethod
-    def _stems(pdir: Path) -> dict[str, AudioFile]:
-        """分析要读的三条分轨（other 由原曲减去它们得到）。"""
-        return {name: AudioFile(pdir / STEMS_DIR / f"{name}.wav") for name in SEPARATED_TRACKS}
+    def _stem_file(pdir: Path, name: str, rec: ProjectRecord) -> AudioFile:
+        """有 WAV 用 WAV（还没迁移或迁移到一半），否则用 FLAC × 记录里的缩放系数。"""
+        wav = pdir / STEMS_DIR / f"{name}.wav"
+        if wav.exists():
+            return AudioFile(wav)
+        if name not in rec.stem_scales:
+            raise FileNotFoundError(f"{name} 分轨缺少缩放系数，无法读取 FLAC")
+        return AudioFile(pdir / STEMS_DIR / f"{name}.flac", rec.stem_scales[name])
+
+    def _compress_stems(self, pid: str) -> None:
+        """分轨 32 位浮点 WAV → 24 位 FLAC（约省一半空间）：每轨缩放到 ±1 以内，读回校验通过、
+        缩放系数写进记录之后才删 WAV。可以重复执行（迁移到一半崩溃后再跑一遍即可）。"""
+        stems_dir = self._store.project_dir(pid) / STEMS_DIR
+        for name in STEM_NAMES:
+            wav = stems_dir / f"{name}.wav"
+            if not wav.exists():
+                continue
+            source = AudioFile(wav)
+            scale = max(1.0, max(float(np.abs(w.body).max(initial=0.0)) for w in source.windows()))
+            flac = stems_dir / f"{name}.flac"
+            write_audio(
+                flac, (w.body / scale for w in source.windows()), source.channels, SAMPLE_RATE, STEM_SUBTYPE
+            )
+            _verify_copy(source, AudioFile(flac, scale), FLAC_TOLERANCE_LSB * scale / 2**23)
+            self._store.set_stem_scale(pid, name, scale)
+            wav.unlink()
 
     @staticmethod
     def _preview_chunks(pdir: Path, scale: float) -> tuple[int, Iterator[np.ndarray]]:
@@ -189,22 +251,38 @@ class JobRunner:
     def _run_analysis(self, pid: str) -> None:
         store, pdir = self._store, self._store.project_dir(pid)
         store.transition_project(pid, ProjectState.DECODING)
-        decode_to_wav(pdir / SOURCE_FILE, pdir / ORIG_FILE, SAMPLE_RATE)
-        store.transition_project(pid, ProjectState.SEPARATING)
-        self._separator.separate(
-            pdir / ORIG_FILE, pdir / STEMS_DIR, lambda p: store.set_project_progress(pid, p)
-        )
-        store.transition_project(pid, ProjectState.ANALYZING)
-        self._finish_analysis(pid)
+        try:
+            decode_to_wav(pdir / SOURCE_FILE, pdir / ORIG_FILE, SAMPLE_RATE)
+            store.transition_project(pid, ProjectState.SEPARATING)
+            self._separator.separate(
+                pdir / ORIG_FILE, pdir / STEMS_DIR, lambda p: store.set_project_progress(pid, p)
+            )
+            store.transition_project(pid, ProjectState.ANALYZING)
+            self._compress_stems(pid)
+            self._finish_analysis(pid)
+        finally:
+            (pdir / ORIG_FILE).unlink(missing_ok=True)
 
     def _run_refresh(self, pid: str) -> None:
-        """项目已处于“分析中”（refresh_stale 转过去的）：只重做分析，不重新解码、分轨。"""
-        self._finish_analysis(pid)
+        """项目已处于“分析中”（refresh_stale 转过去的）：从原文件重新解码再分析，不重新分轨。"""
+        pdir = self._store.project_dir(pid)
+        try:
+            decode_to_wav(pdir / SOURCE_FILE, pdir / ORIG_FILE, SAMPLE_RATE)
+            self._finish_analysis(pid)
+        finally:
+            (pdir / ORIG_FILE).unlink(missing_ok=True)
+
+    def _run_migrate(self, pid: str) -> None:
+        """旧版存储迁移：分轨压成 FLAC，删掉常驻的 orig.wav（重新分析时会从原文件再解码）。"""
+        self._compress_stems(pid)
+        (self._store.project_dir(pid) / ORIG_FILE).unlink(missing_ok=True)
 
     def _finish_analysis(self, pid: str) -> None:
         store, pdir = self._store, self._store.project_dir(pid)
+        rec = store.get_project(pid)
         orig = AudioFile(pdir / ORIG_FILE)
-        result = analyze(orig, self._stems(pdir), SAMPLE_RATE, self._renderer)
+        stems = {name: self._stem_file(pdir, name, rec) for name in SEPARATED_TRACKS}
+        result = analyze(orig, stems, SAMPLE_RATE, self._renderer)
         store.set_project_progress(pid, ANALYZED_PROGRESS)
         scale = max(1.0, result.peak)  # 24 位 FLAC 不能超过 ±1：所有试听文件统一缩放
         self._write_previews(pdir, result.sources, orig, scale)
@@ -238,3 +316,13 @@ class JobRunner:
         finally:
             render_path.unlink(missing_ok=True)
         store.transition_export(eid, ExportState.DONE, file_name=export_file_name(project.source, fmt.ext))
+
+
+def _verify_copy(original: AudioFile, copy: AudioFile, tolerance: float) -> None:
+    """逐段比对两份音频，误差超过 tolerance 就报错（不删原文件）。"""
+    if (copy.frames, copy.channels) != (original.frames, original.channels):
+        raise ValueError(f"{copy.path.name} 的长度或声道数与原文件不一致")
+    for a, b in zip(original.windows(), copy.windows(), strict=True):
+        err = float(np.abs(a.body - b.body).max(initial=0.0))
+        if err > tolerance:
+            raise ValueError(f"{copy.path.name} 读回校验失败：误差 {err:.3g} > {tolerance:.3g}")

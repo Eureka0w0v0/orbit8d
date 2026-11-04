@@ -25,7 +25,7 @@ describe("三语词典", () => {
   });
 
   it("日文、英文真的翻译过（界面文字不应与中文相同，品牌名和格式说明除外）", () => {
-    const allowSame = /^(ui\.appName|ui\.listen8d|format\.ogg|pad\.|shape\.figure8|direction\.diag|shape\.circle|ui\.credits)/;
+    const allowSame = /^(ui\.appName|ui\.listen8d|format\.ogg|pad\.|shape\.figure8|direction\.diag|shape\.circle|ui\.credits|unit\.megabytes)/;
     for (const l of ["ja", "en"] as const) {
       const same = [...flat[l]].filter(([path, value]) => !allowSame.test(path) && value === flat.zh.get(path)).map(([p]) => p);
       if (l === "en") expect(same).toEqual([]);

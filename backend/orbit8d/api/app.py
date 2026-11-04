@@ -20,7 +20,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from orbit8d import __version__
-from orbit8d.assets import ensure_hrtf_sofa
+from orbit8d.assets import ensure_hrtf_sofa, prune_stale_assets
 from orbit8d.config import REPO_ROOT, SAMPLE_RATE, Settings
 from orbit8d.engine.choreo import choreograph
 from orbit8d.engine.hrtf import load_grid, to_bytes
@@ -28,9 +28,17 @@ from orbit8d.engine.pipeline import RENDER_VERSION, Analysis, Renderer
 from orbit8d.engine.reverb import BRIR_VERSION, ROOMS
 from orbit8d.engine.scene import PRESETS, Scene, canonical_json, preset
 from orbit8d.engine.structure import SectionInfo
-from orbit8d.jobs.states import ExportState, ProjectState
-from orbit8d.jobs.store import ExportRecord, NotFound, ProjectRecord, Store
-from orbit8d.jobs.worker import ORIGINAL_PREVIEW, PREVIEW_DIR, SOURCE_FILE, JobRunner, Separator, safe_name
+from orbit8d.jobs.states import ExportState, ProjectState, is_terminal
+from orbit8d.jobs.store import UPLOAD_SUFFIX, ExportRecord, NotFound, ProjectRecord, Store
+from orbit8d.jobs.worker import (
+    ORIGINAL_PREVIEW,
+    PREVIEW_DIR,
+    SOURCE_FILE,
+    JobRunner,
+    Separator,
+    safe_name,
+    song_title,
+)
 from orbit8d.media.ffmpeg import OUTPUT_FORMATS, MediaError, available_formats, probe
 
 log = logging.getLogger(__name__)
@@ -81,6 +89,27 @@ class LocalOriginMiddleware:
         await self.app(scope, receive, send)
 
 
+def housekeeping(store: Store, settings: Settings) -> None:
+    """启动时清理：回收目录、没传完的上传、不再使用的旧缓存。"""
+    store.empty_trash()
+    uploads = store.clean_uploads()
+    assets = prune_stale_assets(settings.assets_dir)
+    log.info("housekeeping done", extra={"event": "server.cleanup", "uploads": uploads, "assets": assets})
+
+
+def project_summary(store: Store, rec: ProjectRecord) -> dict:
+    return {
+        "id": rec.id,
+        "state": str(rec.state),
+        "title": song_title(rec.source),
+        "artist": rec.source.get("artist", ""),
+        "duration_s": rec.source.get("duration_s", 0.0),
+        "size_bytes": store.disk_usage(rec.id),
+        "error": rec.error,
+        "last_used": store.last_used(rec),
+    }
+
+
 def create_app(settings: Settings, separator: Separator) -> FastAPI:
     store = Store(settings)
 
@@ -91,7 +120,9 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         )
         renderer = Renderer(grid)
         runner = JobRunner(store, renderer, separator)
+        housekeeping(store, settings)
         store.recover_interrupted()
+        runner.migrate_storage()  # 先迁移存储，再按需重新分析
         runner.refresh_stale()
         runner.start()
         app.state.store, app.state.runner, app.state.renderer = store, runner, renderer
@@ -152,7 +183,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         if declared and declared.isdigit() and int(declared) > settings.max_upload_bytes:
             raise ApiError(413, "TOO_LARGE", "The file is too large")
         name = safe_name(Path(unquote(request.headers.get(FILENAME_HEADER, ""))).name)
-        tmp = settings.uploads_dir / f"{uuid.uuid4().hex}.part"
+        tmp = settings.uploads_dir / f"{uuid.uuid4().hex}{UPLOAD_SUFFIX}"
         digest, size = hashlib.sha256(), 0
         try:
             with tmp.open("wb") as f:
@@ -166,40 +197,68 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
                 raise ApiError(400, "EMPTY", "The file is empty")
             pid = digest.hexdigest()[:ID_LEN]
             existing = store.find_project(pid)
-            if existing:
-                if existing.state is ProjectState.FAILED:
-                    request.app.state.runner.submit("analysis", pid)
-                return JSONResponse(existing.to_dict(), status_code=200)
-            info = await run_in_threadpool(probe, tmp)
-            if info.duration_s > settings.max_duration_s:
+            info = None if existing else await run_in_threadpool(probe, tmp)
+            if info and info.duration_s > settings.max_duration_s:
                 raise ApiError(
                     400, "TOO_LONG", f"The song is longer than {settings.max_duration_s / 60:.0f} minutes"
                 )
-            store.project_dir(pid).mkdir(parents=True, exist_ok=True)
-            tmp.replace(store.project_dir(pid) / SOURCE_FILE)
-            rec, created = store.create_project_if_absent(
-                ProjectRecord(
-                    id=pid,
-                    state=ProjectState.UPLOADED,
-                    source={
-                        "filename": name,
-                        "size": size,
-                        "sha256": digest.hexdigest(),
-                        "codec": info.codec,
-                        "duration_s": info.duration_s,
-                        "title": info.title,
-                        "artist": info.artist,
-                        "album": info.album,
-                        "has_cover": info.has_cover,
-                    },
-                )
-            )
-            if created:
-                request.app.state.runner.submit("analysis", pid)
+            with store.lock:  # 与删歌互斥：查记录、建记录、排任务一起做
+                rec, status = register_upload(request, pid, tmp, info, name, size, digest.hexdigest())
             log.info("project uploaded", extra={"event": "project.upload", "project_id": pid, "bytes": size})
-            return JSONResponse(rec.to_dict(), status_code=202 if created else 200)
+            return JSONResponse(rec.to_dict(), status_code=status)
         finally:
             tmp.unlink(missing_ok=True)
+
+    def register_upload(
+        request: Request, pid: str, tmp: Path, info, name: str, size: int, sha256: str
+    ) -> tuple[ProjectRecord, int]:
+        """已有这首歌：失败过就重试，返回 200；没有：建项目、排分析，返回 202。"""
+        runner = request.app.state.runner
+        existing = store.find_project(pid)
+        if existing:
+            if existing.state is ProjectState.FAILED and not runner.busy(pid):
+                runner.submit("analysis", pid, pid)
+            return existing, 200
+        if info is None:  # 查的时候还在、加锁前被删了：按新歌再来一次
+            raise ApiError(409, "PROJECT_BUSY", "The song was just deleted; import it again")
+        store.project_dir(pid).mkdir(parents=True, exist_ok=True)
+        tmp.replace(store.project_dir(pid) / SOURCE_FILE)
+        rec, _ = store.create_project_if_absent(
+            ProjectRecord(
+                id=pid,
+                state=ProjectState.UPLOADED,
+                source={
+                    "filename": name,
+                    "size": size,
+                    "sha256": sha256,
+                    "codec": info.codec,
+                    "duration_s": info.duration_s,
+                    "title": info.title,
+                    "artist": info.artist,
+                    "album": info.album,
+                    "has_cover": info.has_cover,
+                },
+            )
+        )
+        runner.submit("analysis", pid, pid)
+        return rec, 202
+
+    @app.get("/api/projects")
+    def list_projects() -> list[dict]:
+        """最近用过的歌在前：标题、时长、状态、占用空间。"""
+        items = [project_summary(store, rec) for rec in store.list_projects()]
+        return sorted(items, key=lambda item: item["last_used"], reverse=True)
+
+    @app.delete("/api/projects/{pid}", status_code=204)
+    def delete_project(request: Request, pid: str) -> Response:
+        """连同它的导出一起删。还有任务（分析中、排队导出等）时 409，不删半截。"""
+        with store.lock:
+            rec = store.get_project(pid)
+            if request.app.state.runner.busy(pid) or not is_terminal(rec.state):
+                raise ApiError(409, "PROJECT_BUSY", "The song is still being processed")
+            moved = store.trash_project(pid)
+        store.empty_trash(moved)
+        return Response(status_code=204)
 
     @app.get("/api/projects/{pid}")
     def get_project(pid: str) -> dict:
@@ -268,7 +327,10 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
             raise NotFound(name)
         if rec.state is not ProjectState.READY:
             raise ApiError(409, "PROJECT_NOT_READY", "Still processing")
-        return FileResponse(store.project_dir(pid) / PREVIEW_DIR / f"{name}.flac", media_type="audio/flac")
+        path = store.project_dir(pid) / PREVIEW_DIR / f"{name}.flac"
+        if not path.exists():
+            raise NotFound(name)
+        return FileResponse(path, media_type="audio/flac")
 
     @app.get("/api/assets/hrtf.bin")
     def get_hrtf(request: Request) -> Response:
@@ -293,6 +355,10 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
 
     @app.post("/api/projects/{pid}/exports")
     def create_export(request: Request, pid: str, body: ExportRequest) -> JSONResponse:
+        with store.lock:  # 与删歌互斥：确认歌还在、建导出记录、排任务一起做
+            return queue_export(request, pid, body)
+
+    def queue_export(request: Request, pid: str, body: ExportRequest) -> JSONResponse:
         project = store.get_project(pid)
         if project.state is not ProjectState.READY:
             raise ApiError(409, "PROJECT_NOT_READY", "Still processing")
@@ -313,7 +379,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
             rec = store.transition_export(eid, ExportState.QUEUED)
             created = True
         if created:
-            request.app.state.runner.submit("export", eid)
+            request.app.state.runner.submit("export", eid, pid)
         return JSONResponse(rec.to_dict(), status_code=202 if created else 200)
 
     @app.get("/api/exports/{eid}")

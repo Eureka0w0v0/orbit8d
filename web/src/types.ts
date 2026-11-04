@@ -127,6 +127,18 @@ export interface Project {
   preview_scale: number;
 }
 
+/** 最近的歌（GET /api/projects），最近用过的在前。 */
+export interface ProjectSummary {
+  id: string;
+  state: ProjectState;
+  title: string;
+  artist: string;
+  duration_s: number;
+  size_bytes: number;
+  error: ApiErrorBody | null;
+  last_used: number;
+}
+
 export interface ExportRecord {
   id: string;
   project_id: string;

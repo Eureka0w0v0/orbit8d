@@ -37,6 +37,10 @@ class Settings:
     def logs_dir(self) -> Path:
         return self.data_dir / "logs"
 
+    @property
+    def trash_dir(self) -> Path:
+        return self.data_dir / "trash"
+
 
 def load_settings() -> Settings:
     return Settings(

@@ -31,27 +31,15 @@ import { loadHead } from "./scene/head";
 import { visualRadius } from "./scene/mapping";
 import { OrbitView } from "./scene/orbits";
 import { Stage } from "./scene/stage";
-import type { EventKind, ExportFormat, Mix, Orbit, Project, Room, RoomName, Scene, Speed, TrackName } from "./types";
+import type { EventKind, ExportFormat, Mix, Orbit, Project, ProjectSummary, Room, RoomName, Scene, Speed, TrackName } from "./types";
 import { TRACKS } from "./types";
 import { h } from "./ui/dom";
 import { EXPORT_STATE_LABEL, PROJECT_STATE_LABEL, TEXT } from "./ui/labels";
 import { OrbitPanel, TracksPanel, type PanelActions, type PanelContext } from "./ui/panels";
 import { SchemaRanges } from "./ui/schema";
 import { TimelineStrip } from "./ui/timeline";
-import { ExportDialog, Overlay, Transport, languageSelect } from "./ui/widgets";
-
-type Phase = "booting" | "empty" | "uploading" | "processing" | "loading" | "ready" | "error";
-
-/** 界面阶段的显式状态机：只允许表里的跳转。 */
-const PHASE_TRANSITIONS: Record<Phase, readonly Phase[]> = {
-  booting: ["empty", "processing", "loading", "error"],
-  empty: ["uploading"],
-  uploading: ["processing", "loading", "error"],
-  processing: ["loading", "error"],
-  loading: ["ready", "error"],
-  ready: ["uploading"],
-  error: ["uploading", "empty"],
-};
+import { canGo, type Phase } from "./ui/phase";
+import { ExportDialog, Overlay, SongMenu, Transport, languageSelect, songLabel, songList, type SongActions } from "./ui/widgets";
 
 const FALLBACK_PRESET = "classic";
 const LAST_PROJECT_KEY = "orbit8d.lastProject";
@@ -136,6 +124,7 @@ export class App {
   private transport!: Transport;
   private overlay!: Overlay;
   private exportDialog!: ExportDialog;
+  private songMenu!: SongMenu;
   private title!: HTMLElement;
   private toastBox!: HTMLElement;
   private undoButton!: HTMLButtonElement;
@@ -148,11 +137,13 @@ export class App {
     this.undoButton = h("button", { type: "button", class: "ghost icon", title: TEXT.undo, disabled: true, onclick: () => this.undo() }, "↩\uFE0E");
     this.redoButton = h("button", { type: "button", class: "ghost icon", title: TEXT.redo, disabled: true, onclick: () => this.redo() }, "↪\uFE0E");
     this.saveStatus = h("span", { class: "save-status" });
+    this.songMenu = new SongMenu(async () => songList(await api.projects(), this.project?.id ?? null, this.songActions()));
     const header = h(
       "header",
       { class: "topbar" },
       h("span", { class: "logo" }, TEXT.appName),
       this.title,
+      this.songMenu.button,
       this.undoButton,
       this.redoButton,
       this.saveStatus,
@@ -177,7 +168,7 @@ export class App {
     });
     this.transport = new Transport(() => void this.togglePlay(), this.timeline.el, () => this.toggleListen());
     const badge = h("div", { class: "listen-badge" }, TEXT.listeningOriginal);
-    root.replaceChildren(viewport, badge, header, this.transport.el, h("p", { class: "credits" }, TEXT.credits), this.overlay.el, this.exportDialog.el, this.toastBox);
+    root.replaceChildren(viewport, badge, header, this.songMenu.el, this.transport.el, h("p", { class: "credits" }, TEXT.credits), this.overlay.el, this.exportDialog.el, this.toastBox);
     window.addEventListener("pagehide", () => void this.flushSave(true)); // 关页面前把没存的改动发出去
     this.overlay.showProgress(TEXT.starting, null);
 
@@ -224,14 +215,14 @@ export class App {
 
   // ---------- 状态机 ----------
   private go(next: Phase): void {
-    if (!PHASE_TRANSITIONS[this.phase].includes(next)) throw new Error(`Illegal UI phase transition: ${this.phase} -> ${next}`);
+    if (!canGo(this.phase, next)) throw new Error(`Illegal UI phase transition: ${this.phase} -> ${next}`);
     this.phase = next;
     document.body.dataset.phase = next;
   }
 
   private fail(err: unknown): void {
     console.error("[orbit8d]", err);
-    if (PHASE_TRANSITIONS[this.phase].includes("error")) {
+    if (canGo(this.phase, "error")) {
       this.go("error");
       this.overlay.showError(describe(err));
     } else {
@@ -269,7 +260,75 @@ export class App {
       }
     }
     this.go("empty");
+    void this.showDropPage();
+  }
+
+  /** 导入页：拖入区 + 最近的歌（列表取不到时只显示拖入区）。 */
+  private async showDropPage(): Promise<void> {
     this.overlay.showDrop();
+    try {
+      const songs = await api.projects();
+      if (songs.length && this.phase === "empty") this.overlay.showDrop(songList(songs, null, this.songActions()));
+    } catch (err) {
+      console.warn("[orbit8d] the recent songs list is unavailable", err);
+    }
+  }
+
+  private songActions(): SongActions {
+    return { open: (id) => void this.openSong(id), remove: (song) => void this.deleteSong(song) };
+  }
+
+  /** 从最近的歌里打开一首（导入页或顶栏 ▾ 菜单）。 */
+  private async openSong(id: string): Promise<void> {
+    if (!canGo(this.phase, "loading")) return;
+    this.songMenu.close();
+    this.engine.pause();
+    try {
+      const project = await api.project(id);
+      if (project.state !== "READY") throw new ApiError(409, "PROJECT_NOT_READY", PROJECT_STATE_LABEL[project.state]);
+      await this.loadProject(project);
+    } catch (err) {
+      this.fail(err);
+    }
+  }
+
+  /** 删歌（连同导出）。删的是正在用的歌：没存的改动直接丢掉，回到导入页。 */
+  private async deleteSong(song: ProjectSummary): Promise<void> {
+    const current = this.project?.id === song.id;
+    if (current) {
+      window.clearTimeout(this.saveTimer);
+      this.pendingSave = null;
+    }
+    try {
+      await api.deleteProject(song.id);
+    } catch (err) {
+      this.toast(describe(err));
+      if (this.songMenu.isOpen) await this.songMenu.refresh();
+      return;
+    }
+    if (storage()?.getItem(LAST_PROJECT_KEY) === song.id) storage()?.removeItem(LAST_PROJECT_KEY);
+    this.toast(TEXT.songDeleted(songLabel(song)), "info");
+    if (current) this.closeProject();
+    else if (this.phase === "empty") void this.showDropPage();
+    else if (this.songMenu.isOpen) await this.songMenu.refresh();
+  }
+
+  private closeProject(): void {
+    this.engine.pause();
+    this.songMenu.close();
+    this.exportDialog.close();
+    this.project = null;
+    this.scene = null;
+    this.motions = null;
+    this.timing = null;
+    this.grid = null;
+    this.history.clear();
+    this.updateUndoButtons();
+    this.title.textContent = "";
+    this.transport.setInfo("");
+    for (const view of this.views.values()) view.group.visible = false;
+    this.go("empty");
+    void this.showDropPage();
   }
 
   private async waitReady(project: Project): Promise<Project> {
@@ -285,7 +344,7 @@ export class App {
   }
 
   private async importFile(file: File): Promise<void> {
-    if (!PHASE_TRANSITIONS[this.phase].includes("uploading")) return;
+    if (!canGo(this.phase, "uploading")) return;
     this.engine.pause();
     this.go("uploading");
     try {
@@ -341,6 +400,7 @@ export class App {
     await this.ensureRoom(scene.room.name);
     await this.engine.setEq(await api.sceneEq(project.id, scene));
     this.applyScene(scene, { record: false, save: false, refreshEq: false });
+    for (const view of this.views.values()) view.group.visible = true;
     this.setSaveState("saved");
     this.title.textContent = project.source.title
       ? `${project.source.artist ? `${project.source.artist} - ` : ""}${project.source.title}`

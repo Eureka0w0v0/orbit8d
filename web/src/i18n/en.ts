@@ -78,6 +78,12 @@ export const en: Messages = {
     download: "Download",
     close: "Close",
     retry: "Choose another file",
+    recentSongs: "Recent songs",
+    songMenuTitle: "Switch to or delete an imported song",
+    deleteSong: "Delete",
+    deleteConfirm: "Click again to delete",
+    deleteSongTitle: "Delete this song and its exports (the original file on your computer is not touched)",
+    songDeleted: (title: string) => `Deleted “${title}”`,
     presets: "Presets",
     tracks: "Tracks",
     room: "Room",
@@ -127,7 +133,11 @@ export const en: Messages = {
     listSep: ", ",
     credits: "Head model: Infinite, 3D Head Scan by Lee Perry-Smith (CC BY 3.0) · HRTF: TH Köln Neumann KU100",
   },
-  unit: { secondsPerTurn: (v: string) => `${v} s/turn`, bars: (n: number) => (n === 1 ? "1 bar" : `${n} bars`) },
+  unit: {
+    secondsPerTurn: (v: string) => `${v} s/turn`,
+    bars: (n: number) => (n === 1 ? "1 bar" : `${n} bars`),
+    megabytes: (v: string) => `${v} MB`,
+  },
   edit: {
     maxSections: (n: number) => `At most ${n} sections`,
     tooClose: "Too close to a section boundary (each section needs at least 1 bar)",
@@ -158,5 +168,6 @@ export const en: Messages = {
     INTERRUPTED: "The last run was interrupted; import the song again to retry",
     INTERNAL: "Internal error",
     STATE_CONFLICT: "State conflict, please try again",
+    PROJECT_BUSY: "The song is still being processed; delete it when it is done",
   },
 };
