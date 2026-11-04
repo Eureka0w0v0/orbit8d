@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from orbit8d.engine.hrtf import HrtfGrid, to_bytes
 from orbit8d.engine.orbit import SHAPES, OrbitParams, orbit_position
-from orbit8d.engine.pipeline import Renderer, Sources
+from orbit8d.engine.pipeline import SOURCE_CHANNELS, Renderer, Sources
 from orbit8d.engine.scene import TRACKS, Event, Orbit, Scene, Section, Speed
 from orbit8d.engine.timeline import compile_track, track_position, wet_db_curve
 
@@ -35,10 +35,7 @@ RENDER_DATA_FILE = GOLDEN_DIR / "render_case.f32"
 RENDER_SR = 44100
 RENDER_SAMPLES = 8192
 RENDER_TAPS = 48
-INPUT_CHANNELS = (
-    "vocals_hi", "bass_hi", "drums_hi_L", "drums_hi_R", "other_hi_L", "other_hi_R",
-    "bass_sub", "drums_sub", "other_sub",
-)  # fmt: skip
+INPUT_CHANNELS = SOURCE_CHANNELS  # vocals_hi, bass_hi, drums_hi_L/R, other_hi_L/R, bass/drums/other_sub
 RENDER_BPM_NORM = 97.5
 RENDER_T_REF = 0.05
 RENDER_CALIBRATION = {"vocals": 1.1, "drums": 0.6, "bass": 0.9, "other": 0.7, "sub": 0.85}
@@ -264,13 +261,7 @@ def render_case(seed: int = SEED) -> tuple[dict, np.ndarray, HrtfGrid]:
         .astype(np.float32)
         .astype(np.float64)
     )
-    src = Sources(
-        hi={"vocals": inputs[0], "bass": inputs[1], "drums": inputs[2:4].T, "other": inputs[4:6].T},
-        sub={"bass": inputs[6], "drums": inputs[7], "other": inputs[8]},
-        energy_hi={"vocals": 1.0, "bass": 1.0, "drums": 1.0, "other": 1.0},
-        energy_sub=1.0,
-        sr=RENDER_SR,
-    )
+    src = Sources(data=inputs.astype(np.float32), sr=RENDER_SR)  # 9 路的顺序与 INPUT_CHANNELS 相同
     scene = render_scene()
     renderer = Renderer(grid)
     tracks = renderer.render_tracks(src, scene, RENDER_BPM_NORM, RENDER_T_REF, RENDER_CALIBRATION)

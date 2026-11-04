@@ -5,9 +5,10 @@ import pytest
 
 from orbit8d.assets import HRTF_FILE
 from orbit8d.config import load_settings
+from orbit8d.engine.chunks import ArraySignal
 from orbit8d.engine.hrtf import from_sofa
 from orbit8d.engine.master import CEILING_DBTP, true_peak
-from orbit8d.engine.pipeline import Analysis, Renderer, analyze, prepare_sources
+from orbit8d.engine.pipeline import Analysis, Renderer, analyze, prepare
 from orbit8d.engine.scene import Scene, preset
 
 SR = 44100
@@ -32,6 +33,10 @@ def fake_stems(seconds: float = 6.0, seed: int = 0) -> tuple[np.ndarray, dict[st
     return orig, stems
 
 
+def as_signals(orig: np.ndarray, stems: dict[str, np.ndarray]) -> tuple[ArraySignal, dict[str, ArraySignal]]:
+    return ArraySignal(orig), {name: ArraySignal(x) for name, x in stems.items()}
+
+
 @pytest.fixture(scope="module")
 def renderer() -> Renderer:
     return Renderer(from_sofa(SOFA, SR))
@@ -40,8 +45,8 @@ def renderer() -> Renderer:
 @pytest.fixture(scope="module")
 def analyzed(renderer):
     orig, stems = fake_stems()
-    src, analysis = analyze(orig, stems, SR, renderer)
-    return orig, stems, src, analysis
+    result = analyze(*as_signals(orig, stems), SR, renderer)
+    return orig, stems, result.sources, result.analysis
 
 
 def band_energy(x: np.ndarray, lo: float, hi: float) -> float:
@@ -51,17 +56,18 @@ def band_energy(x: np.ndarray, lo: float, hi: float) -> float:
 
 
 def test_prepare_sources_is_complementary_and_keeps_residual():
+    """声源按 float32 存（SPEC §5.7），所以容差是 float32 的舍入量级。"""
     orig, stems = fake_stems()
-    src = prepare_sources(orig, stems, SR)
-    assert np.allclose(src.sub["bass"] + src.hi["bass"], stems["bass"].mean(axis=1), atol=1e-12)
-    assert np.allclose(
-        src.sub["drums"] + src.hi["drums"].mean(axis=1), stems["drums"].mean(axis=1), atol=1e-12
-    )
+    src = prepare(*as_signals(orig, stems), SR).sources
+    tol = 1e-6
+    assert src.data.dtype == np.float32
+    assert np.allclose(src.sub("bass") + src.hi("bass"), stems["bass"].mean(axis=1), atol=tol)
+    assert np.allclose(src.sub("drums") + src.hi("drums").mean(axis=1), stems["drums"].mean(axis=1), atol=tol)
     other_with_residual = stems["other"] + (orig - sum(stems.values()))
     assert np.allclose(
-        src.sub["other"] + src.hi["other"].mean(axis=1), other_with_residual.mean(axis=1), atol=1e-12
+        src.sub("other") + src.hi("other").mean(axis=1), other_with_residual.mean(axis=1), atol=tol
     )
-    assert src.hi["vocals"].ndim == 1 and src.hi["drums"].shape == (len(orig), 2)
+    assert src.hi("vocals").ndim == 1 and src.hi("drums").shape == (len(orig), 2)
 
 
 def test_analysis_roundtrips_through_json(analyzed):
@@ -74,10 +80,11 @@ def test_analysis_roundtrips_through_json(analyzed):
 
 def test_calibration_restores_each_track_energy(renderer, analyzed):
     orig, stems, src, analysis = analyzed
+    energy = prepare(*as_signals(orig, stems), SR).energy
     ref = preset("classic", analysis.default_bars)
     tracks = renderer.render_tracks(src, ref, analysis.bpm_norm, analysis.t_ref, analysis.calibration)
     for name in ("vocals", "drums", "bass", "other"):
-        assert 10 * np.log10(np.sum(tracks[name] ** 2) / src.energy_hi[name]) == pytest.approx(0.0, abs=0.1)
+        assert 10 * np.log10(np.sum(tracks[name] ** 2) / energy[name]) == pytest.approx(0.0, abs=0.1)
 
 
 def test_sub_bass_stays_centered_while_everything_rotates(renderer, analyzed):
@@ -142,3 +149,21 @@ def test_original_preview_is_loudness_matched_to_the_8d_preview(renderer, analyz
     )
     matched = orig * analysis.original_gain
     assert integrated_loudness(matched, SR) == pytest.approx(integrated_loudness(preview, SR), abs=0.1)
+
+
+def test_analysis_memory_grows_only_with_the_float32_sources(renderer):
+    """分段处理（SPEC §5.7）：歌每长 1 秒，分析只多占 9 路 float32 声源 + 校准混音（约 1.9 MB）；
+    其余临时内存与歌长无关（旧实现约 25 MB/秒）。"""
+    import tracemalloc
+
+    peaks = {}
+    for seconds in (20.0, 60.0):
+        signals = as_signals(*fake_stems(seconds=seconds))
+        tracemalloc.start()
+        try:
+            analyze(*signals, SR, renderer)
+            peaks[seconds] = tracemalloc.get_traced_memory()[1] / 2**20
+        finally:
+            tracemalloc.stop()
+    assert (peaks[60.0] - peaks[20.0]) / 40.0 < 2.5
+    assert peaks[60.0] < 500

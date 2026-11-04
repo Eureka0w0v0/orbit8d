@@ -12,8 +12,9 @@ EQ = 锚点 + 染色(经典) − 染色(当前场景)（dB）。当前场景就�
 from typing import Protocol
 
 import numpy as np
-from scipy.signal import freqz, welch
+from scipy.signal import freqz
 
+from orbit8d.engine.chunks import WELCH_NPERSEG, WelchMean, chunk_ranges
 from orbit8d.engine.hrtf import HrtfGrid, blend, interp_weights
 from orbit8d.engine.render import distance_gain, rear_factor, rear_shelf_coeffs
 from orbit8d.engine.scene import TRACKS, Scene, effective_track_gains
@@ -21,7 +22,6 @@ from orbit8d.engine.timeline import compile_track, track_position, wet_db_curve
 
 BANDS_HZ = 1000.0 * 2.0 ** (np.arange(-14, 13) / 3)  # 39 Hz … 16 kHz，27 个 1/3 倍频程
 HALF_BAND = 2.0 ** (1 / 6)
-WELCH_NPERSEG = 8192
 HRTF_NFFT = 1024
 TRAJECTORY_HZ = 4.0  # 沿轨道每秒取 4 个点
 MATCH_LIMIT_DB = 6.0
@@ -43,39 +43,40 @@ def band_means(power: np.ndarray, freqs: np.ndarray) -> np.ndarray:
     return out
 
 
-def band_power(x: np.ndarray, sr: int) -> np.ndarray:
-    """长期平均功率谱按频带求和；立体声两个声道相加。"""
-    freqs, p = welch(np.asarray(x, dtype=np.float64), sr, nperseg=min(WELCH_NPERSEG, len(x)), axis=0)
-    if p.ndim == 2:
-        p = p.sum(axis=1)
+def psd_bands(freqs: np.ndarray, psd: np.ndarray) -> np.ndarray:
+    """功率谱密度按频带求和（频带里没有频点时取离中心最近的频点）。"""
     out = np.empty(len(BANDS_HZ))
     for k, fc in enumerate(BANDS_HZ):
         sel = (freqs >= fc / HALF_BAND) & (freqs < fc * HALF_BAND)
-        out[k] = p[sel].sum() if sel.any() else p[int(np.argmin(np.abs(freqs - fc)))]
+        out[k] = psd[sel].sum() if sel.any() else psd[int(np.argmin(np.abs(freqs - fc)))]
     return out + EPS
 
 
-def source_spectra(hi: dict[str, np.ndarray], sub: dict[str, np.ndarray], sr: int) -> dict[str, list[float]]:
-    """渲染时每一路单声道声源（立体声轨拆成左、右，外加送混响用的单声道和）的频带功率。"""
-    out = {}
-    for name in TRACKS:
-        x = hi[name]
-        if x.ndim == 1:
-            out[name] = band_power(x, sr)
-        else:
-            out[f"{name}_L"], out[f"{name}_R"] = band_power(x[:, 0], sr), band_power(x[:, 1], sr)
-            out[f"{name}_M"] = band_power(x.mean(axis=1), sr)
-    for name in SUB_TRACKS:
-        out[f"{name}_sub"] = band_power(sub[name], sr)
-    return {k: v.tolist() for k, v in out.items()}
+def band_power(x: np.ndarray, sr: int) -> np.ndarray:
+    """长期平均功率谱（Welch，分段累计）按频带求和；立体声两个声道相加。"""
+    x = np.asarray(x)
+    welch = WelchMean(len(x), sr, WELCH_NPERSEG)
+    for s, e in chunk_ranges(len(x)):
+        welch.push(x[s:e].astype(np.float64).T)
+    freqs, psd = welch.result()
+    return psd_bands(freqs, psd if psd.ndim == 1 else psd.sum(axis=0))
+
+
+def spectra_from_psd(freqs: np.ndarray, psd: np.ndarray, keys: tuple[str, ...]) -> dict[str, list[float]]:
+    """各路声源（psd 的各行，顺序同 keys）的频带功率，供按场景预测染色。"""
+    return {key: psd_bands(freqs, row).tolist() for key, row in zip(keys, psd, strict=True)}
+
+
+def match_from_power(reference: np.ndarray, rendered: np.ndarray) -> np.ndarray:
+    """把 rendered 的频带功率拉回 reference 需要的各频带增益（中位数归零，限幅 ±6 dB）。"""
+    d = 10 * np.log10(reference / rendered)
+    d[10 * np.log10(reference / reference.max()) < SILENT_BAND_DB] = 0.0
+    return np.clip(d - np.median(d), -MATCH_LIMIT_DB, MATCH_LIMIT_DB)
 
 
 def match_gain_db(reference: np.ndarray, rendered: np.ndarray, sr: int) -> np.ndarray:
-    """把 rendered 的长期平均谱拉回 reference 需要的各频带增益（中位数归零，限幅 ±6 dB）。"""
-    ref, got = band_power(reference, sr), band_power(rendered, sr)
-    d = 10 * np.log10(ref / got)
-    d[10 * np.log10(ref / ref.max()) < SILENT_BAND_DB] = 0.0
-    return np.clip(d - np.median(d), -MATCH_LIMIT_DB, MATCH_LIMIT_DB)
+    """把 rendered 的长期平均谱拉回 reference 需要的各频带增益。"""
+    return match_from_power(band_power(reference, sr), band_power(rendered, sr))
 
 
 class ToneInputs(Protocol):

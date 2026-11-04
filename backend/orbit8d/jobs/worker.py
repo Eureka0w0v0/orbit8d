@@ -5,27 +5,30 @@ import logging
 import queue
 import re
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 import numpy as np
-import soundfile as sf
 
 from orbit8d.config import SAMPLE_RATE
+from orbit8d.engine.chunks import aligned_windows, chunk_ranges
 from orbit8d.engine.pipeline import (
     ANALYSIS_VERSION,
+    PREVIEW_FILES,
+    SEPARATED_TRACKS,
+    SOURCE_CHANNELS,
     Analysis,
     Renderer,
+    Sources,
     analyze,
-    prepare_sources,
-    preview_stems,
 )
 from orbit8d.engine.scene import Scene
 from orbit8d.jobs.states import ExportState, IllegalTransition, ProjectState
 from orbit8d.jobs.store import Store
 from orbit8d.logging_setup import trace
+from orbit8d.media.audiofile import AudioFile, write_audio
 from orbit8d.media.ffmpeg import OUTPUT_FORMATS, MediaError, decode_to_wav, encode
 
 log = logging.getLogger(__name__)
@@ -153,10 +156,35 @@ class JobRunner:
                 log.exception("job crashed", extra={"event": "job.crash", "kind": job.kind})
                 fail(job.id, "INTERNAL", f"{type(exc).__name__}: {exc}")
 
-    def _load_audio(self, pdir: Path) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-        orig, _ = sf.read(pdir / ORIG_FILE, always_2d=True)
-        stems = {name: sf.read(pdir / STEMS_DIR / f"{name}.wav", always_2d=True)[0] for name in STEM_NAMES}
-        return orig, stems
+    @staticmethod
+    def _stems(pdir: Path) -> dict[str, AudioFile]:
+        """分析要读的三条分轨（other 由原曲减去它们得到）。"""
+        return {name: AudioFile(pdir / STEMS_DIR / f"{name}.wav") for name in SEPARATED_TRACKS}
+
+    @staticmethod
+    def _preview_chunks(pdir: Path, scale: float) -> tuple[int, Iterator[np.ndarray]]:
+        """试听文件 × scale → 按段的 9 路声源 (9, L)，与浏览器试听同一份数据。"""
+        files = [AudioFile(pdir / PREVIEW_DIR / f"{name}.flac", scale) for name in PREVIEW_FILES]
+
+        def chunks() -> Iterator[np.ndarray]:
+            for windows in aligned_windows(files):
+                chunk = np.empty((len(SOURCE_CHANNELS), windows[0].end - windows[0].start))
+                for channels, w in zip(PREVIEW_FILES.values(), windows, strict=True):
+                    chunk[list(channels)] = w.body.T
+                yield chunk
+
+        return files[0].frames, chunks()
+
+    @staticmethod
+    def _write_previews(pdir: Path, src: Sources, orig: AudioFile, scale: float) -> None:
+        """9 路声源 + 原曲（A/B 对比用）写成 24 位 FLAC，统一除以 scale 保证不超过 ±1。"""
+        out = pdir / PREVIEW_DIR
+        out.mkdir(exist_ok=True)
+        for name, channels in PREVIEW_FILES.items():
+            parts = (src.data[list(channels), s:e].T / scale for s, e in chunk_ranges(src.n))
+            write_audio(out / f"{name}.flac", parts, len(channels), SAMPLE_RATE, PREVIEW_SUBTYPE)
+        parts = (w.body / scale for w in orig.windows())
+        write_audio(out / f"{ORIGINAL_PREVIEW}.flac", parts, orig.channels, SAMPLE_RATE, PREVIEW_SUBTYPE)
 
     def _run_analysis(self, pid: str) -> None:
         store, pdir = self._store, self._store.project_dir(pid)
@@ -175,17 +203,14 @@ class JobRunner:
 
     def _finish_analysis(self, pid: str) -> None:
         store, pdir = self._store, self._store.project_dir(pid)
-        orig, stems = self._load_audio(pdir)
-        src, analysis = analyze(orig, stems, SAMPLE_RATE, self._renderer)
+        orig = AudioFile(pdir / ORIG_FILE)
+        result = analyze(orig, self._stems(pdir), SAMPLE_RATE, self._renderer)
         store.set_project_progress(pid, ANALYZED_PROGRESS)
-        files = {**preview_stems(src), ORIGINAL_PREVIEW: orig}  # 原曲也给一份，供试听时 A/B 对比
-        scale = max(1.0, max(float(np.abs(x).max()) for x in files.values()))  # 24-bit 不能超过 ±1，统一缩放
-        (pdir / PREVIEW_DIR).mkdir(exist_ok=True)
-        for name, data in files.items():
-            sf.write(pdir / PREVIEW_DIR / f"{name}.flac", data / scale, SAMPLE_RATE, subtype=PREVIEW_SUBTYPE)
-        (pdir / ANALYSIS_FILE).write_text(analysis.to_json(), encoding="utf-8")
+        scale = max(1.0, result.peak)  # 24 位 FLAC 不能超过 ±1：所有试听文件统一缩放
+        self._write_previews(pdir, result.sources, orig, scale)
+        (pdir / ANALYSIS_FILE).write_text(result.analysis.to_json(), encoding="utf-8")
         store.transition_project(
-            pid, ProjectState.READY, analysis=json.loads(analysis.to_json()), preview_scale=scale
+            pid, ProjectState.READY, analysis=json.loads(result.analysis.to_json()), preview_scale=scale
         )
 
     def _run_export(self, eid: str) -> None:
@@ -193,14 +218,12 @@ class JobRunner:
         rec = store.transition_export(eid, ExportState.RENDERING)
         project = store.get_project(rec.project_id)
         pdir, edir = store.project_dir(project.id), store.export_dir(eid)
-        orig, stems = self._load_audio(pdir)
-        out = self._renderer.export(
-            prepare_sources(orig, stems, SAMPLE_RATE),
-            Scene.model_validate(rec.scene),
-            Analysis(**project.analysis),
+        n, chunks = self._preview_chunks(pdir, project.preview_scale)
+        mastered = self._renderer.export_chunks(
+            chunks, n, Scene.model_validate(rec.scene), Analysis(**project.analysis)
         )
         render_path = edir / RENDER_FILE
-        sf.write(render_path, out, SAMPLE_RATE, subtype="FLOAT")
+        write_audio(render_path, mastered, 2, SAMPLE_RATE, "FLOAT")
         store.transition_export(eid, ExportState.ENCODING)
         fmt = OUTPUT_FORMATS[rec.format]
         cover = pdir / SOURCE_FILE if project.source.get("has_cover") else None

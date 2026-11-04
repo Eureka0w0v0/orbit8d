@@ -7,7 +7,7 @@ from scipy.signal import butter, sosfilt
 from orbit8d.engine.pipeline import Renderer, analyze
 from orbit8d.engine.scene import preset
 from orbit8d.engine.tone import BANDS_HZ, band_power, match_gain_db, scene_eq_db
-from tests.test_pipeline import SOFA, SR, fake_stems
+from tests.test_pipeline import SOFA, SR, as_signals, fake_stems
 
 pytestmark = [pytest.mark.slow, pytest.mark.skipif(not SOFA.exists(), reason="需要先运行 make assets")]
 MID = (BANDS_HZ >= 200) & (BANDS_HZ <= 12000)
@@ -18,9 +18,8 @@ def setup():
     from orbit8d.engine.hrtf import from_sofa
 
     renderer = Renderer(from_sofa(SOFA, SR))
-    orig, stems = fake_stems(seconds=12.0)
-    src, analysis = analyze(orig, stems, SR, renderer)
-    return renderer, src, analysis
+    result = analyze(*as_signals(*fake_stems(seconds=12.0)), SR, renderer)
+    return renderer, result.sources, result.analysis
 
 
 def eq_db(renderer, scene, analysis):
