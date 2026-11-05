@@ -62,7 +62,9 @@ Most "8D" videos online just pan the whole mixed song left and right and add rev
 
 ### 3.2 Stem separation
 
-[Demucs](https://github.com/facebookresearch/demucs) (the `htdemucs_ft` model) splits the song into four stems: **vocals, drums, bass, other**. It runs on the Apple GPU (MPS) when available, otherwise CUDA, otherwise the CPU. Separation is never perfect, so the leftover (original minus the sum of the stems) is added to "other" — nothing from the original is lost.
+[Demucs](https://github.com/facebookresearch/demucs) (the `htdemucs_ft` model) splits the song into four stems: **vocals, drums, bass, other**. It runs on the Apple GPU (MPS) when available, otherwise CUDA, otherwise the CPU, and reports its real progress model by model and segment by segment. The model (four sub-models, about 336 MB) is loaded from local files only: if your Hugging Face cache already has it, that copy is used; otherwise it is downloaded once (by `make setup` or before the first separation, with a progress bar) and every file is checked against a pinned SHA-256 hash. Separation is never perfect, so the leftover is added to "other" — "other" is simply the original minus vocals, drums and bass, so nothing from the original is lost.
+
+The stems are stored as 24-bit FLAC (each scaled to fit, with the scale factor kept in the project record) — about half the size of the raw separation output. The decoded copy of the song is only kept while it is being analysed.
 
 ### 3.3 Analysis
 
@@ -78,6 +80,16 @@ The analysis runs once per song and takes about 10–15 seconds.
 - **Preview files.** The seven preview sources (4 moving parts, 3 deep-bass parts) and the original are written as 24-bit FLAC files for the browser.
 
 A project moves through an explicit state machine — `UPLOADED → DECODING → SEPARATING → ANALYZING → READY` (or `FAILED`) — and the interface shows each stage. When a new version of Orbit 8D changes the analysis, existing projects are re-analysed once at startup (`READY → ANALYZING → READY`) without separating the stems again.
+
+### 3.4 Working in segments
+
+Everything is processed in segments of about ten seconds (423,360 samples — a whole number of 32-sample render blocks and of 30 ms limiter windows), so memory use no longer grows with the song: a 4-minute song needs about 1 GB, a 20-minute song under 3 GB. Only the data that has to span the whole song is kept, in 32-bit floats: the nine sources during analysis, and the unmastered mix during calibration and export. Every step gives exactly the result it would give on the whole song at once:
+
+- Steps that only look back (filters, convolutions, the HRTF block renderer) carry their state — filter memory and convolution tails — from one segment into the next.
+- Steps that also look ahead (the zero-phase crossover, the linear-phase EQ, true-peak detection, the limiter) read a little context before and after each segment and keep only the middle.
+- Statistics computed over fixed frames (long-term spectra, the tempo detector's onset curve, the per-frame timbre used for sections) place their frames exactly where whole-song processing would, and loudness is measured with a streaming ITU-R BS.1770 meter.
+
+Automated tests compare every one of these against the whole-song computation, and a full analysis and export of a real song agree with the previous whole-song implementation to −125 dB.
 
 ## 4. Describing motion: scenes and the timeline
 
@@ -133,7 +145,7 @@ With a single section and no events, the result is exactly the simple formula ab
 
 ### 4.4 Auto choreography
 
-The auto choreography turns the detected sections into a scene: a slow raised spiral for the intro and outro (+4 dB reverb), classic 8D for verses, double speed on opposite 45° diagonals for choruses, a vertical 3D cross for the bridge (+2 dB reverb), a fly-over at the start of the loudest chorus and a one-bar vocal hold three quarters of the way through each long verse. It is only a starting point — every value remains editable.
+The auto choreography turns the detected sections into a scene: a slow raised spiral for the intro (clockwise) and outro (counter-clockwise, +4 dB reverb), classic 8D for verses, double speed on opposite 45° diagonals for choruses, a vertical 3D cross for the bridge (+2 dB reverb), a fly-over at the start of the loudest chorus and a one-bar vocal hold three quarters of the way through each long verse. Repeated sections rotate through variations — verses alternate direction, choruses go diagonal → mirrored diagonal → three layers, bridges go cross → tumble — and the rules are deterministic. Pressing ✨ in the app re-runs this on the sections as you have edited them (boundaries and names kept, the loudest chorus found from the original's loudness curve), replacing only the orbits, the per-section reverb and the events. It is only a starting point — every value remains editable.
 
 ## 5. Rendering a moving sound for two ears
 
@@ -184,7 +196,7 @@ The result is turned into a 1,025-tap linear-phase filter. The preview asks the 
 
 ## 8. Mastering
 
-The export aims for −9 LUFS, but the gain is capped so that at most 1% of the song's 30 ms segments need more than 1 dB of limiting. A look-ahead **true-peak limiter** (4× oversampled) then keeps every peak below −1 dBTP. In practice exports land around −12 LUFS: a little quieter than loud commercial masters, but with the song's dynamics intact.
+The export aims for −9 LUFS (*Loud*, the default, matching the preview) or −14 LUFS (*Standard*), but the gain is capped so that at most 1% of the song's 30 ms segments need more than 1 dB of limiting. A look-ahead **true-peak limiter** (4× oversampled) then keeps every peak below −1 dBTP. In practice *Loud* exports land around −12 LUFS: a little quieter than loud commercial masters, but with the song's dynamics intact. The export reads exactly the preview files the browser plays, renders segment by segment and writes the result to disk as it goes.
 
 ## 9. The live preview in the browser
 
@@ -200,7 +212,8 @@ original (for A/B) ────────────────────�
 - The worklet runs the TypeScript twin of the server's timeline and block renderer on every 128-sample audio quantum (four 32-sample blocks).
 - The timeline is compiled into plain arrays whenever the scene changes and sent to the worklet, so no memory is allocated while audio is playing.
 - The original song plays in perfect sync on a separate path; pressing **B** crossfades between the two paths in 40 ms.
-- The 3D view moves the dots using the same timeline code, so what you see matches what you hear.
+- The 3D view moves the dots using the same timeline code, so what you see matches what you hear. It only redraws when something visible changes (playing, scrubbing, moving the camera, editing), so a paused window uses no GPU time.
+- Nothing is switched abruptly: playback fades in over 10 ms and out over 15 ms before pausing or jumping, the worklet starts and stops at exact frame numbers so a fade-out is rendered to the end, and volume, mute and reverb changes glide over 20 ms. A muted track lets its last echoes finish and then starts from a clean state when un-muted.
 
 ## 10. How good is it?
 
@@ -222,13 +235,14 @@ All other presets stay within ±1.4 dB of the original's timbre. The correlation
 - **Validated data.** Scenes are validated against explicit ranges; invalid ones are rejected and never overwrite a saved scene.
 - **Content-addressed and idempotent.** Project ids come from the file content; export ids come from the song, the scene, the format and the renderer version, so repeating an export returns the finished file instead of rendering again.
 - **Explicit state machines** for projects, exports and the interface: illegal transitions raise errors instead of silently misbehaving.
-- **Crash-safe files.** Records and scenes are written to a temporary file and atomically renamed. Jobs interrupted by a shutdown are marked as failed on the next start and can simply be retried.
+- **Crash-safe files.** Records, scenes, stems and preview files are written to a temporary file and atomically renamed; old stems are only removed after the new FLAC copy has been read back and verified. Jobs interrupted by a shutdown are marked as failed on the next start (with separate messages for imports and exports) and can simply be retried.
+- **Safe deletion.** A song with queued or running work can't be deleted; otherwise its folder and its exports are first moved to `data/trash/` in one rename each and then removed, so an interrupted deletion never leaves half a song behind.
 - **Structured logs.** Every job logs JSON lines with a trace id (`data/logs/orbit8d.log`).
 
 ## 12. Testing
 
-- **Python:** about 200 tests covering the orbit formulas, the timeline, HRTF handling, the block renderer, reverb, mastering, tone correction, tempo and section detection, the scene model and its upgrade path, the state machines and the HTTP API (including security boundaries).
-- **TypeScript:** tests for the timeline, the renderer, scene editing, undo/redo, the orientation controls and the three-language dictionaries.
+- **Python:** about 250 tests covering the orbit formulas, the timeline, HRTF handling, the block renderer, reverb, mastering, tone correction, tempo and section detection, auto choreography, the scene model and its upgrade path, segment-by-segment processing against whole-song references, memory growth, model and data downloads, storage migration and deletion, the state machines and the HTTP API (including security boundaries).
+- **TypeScript:** tests for the timeline, the renderer (including click-free parameter changes), playback start/stop timing, on-demand redrawing, the interface phases, scene editing, undo/redo, the orientation controls and the three-language dictionaries.
 - **Golden data** in `shared/golden/`, generated by Python and checked by TypeScript, guarantees that both implementations agree: orbit and timeline positions within 10⁻⁹, rendered audio within −90 dB.
 
 Run everything with `make test`.
@@ -244,6 +258,8 @@ Run everything with `make test`.
 | Reverb | `engine/reverb.py` | (impulse response served by the backend) |
 | Tone correction | `engine/tone.py`, `engine/master.py` | `web/src/audio/engine.ts` (applies it) |
 | Mastering | `engine/master.py` | — |
+| Segment-by-segment processing | `engine/chunks.py`, `media/audiofile.py` | — |
+| Stem separation and model files | `separate/demucs_runner.py`, `separate/model.py` | — |
 | Tempo, sections, choreography | `engine/tempo.py`, `engine/structure.py`, `engine/choreo.py` | — |
 | Scene model | `engine/scene.py` | `web/src/types.ts`, `web/src/scene/edit.ts` |
 | Jobs and state machines | `jobs/` | `web/src/app.ts` (interface phases) |

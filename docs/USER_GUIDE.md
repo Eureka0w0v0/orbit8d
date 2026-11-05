@@ -44,7 +44,9 @@ The song then goes through these stages, shown with a progress bar:
 | Separating stems | Demucs splits it into vocals, drums, bass and other instruments | about 1.5 minutes on Apple Silicon; much longer on CPU |
 | Detecting tempo, calibrating and finding song sections | Tempo, section boundaries, loudness and tone are measured | about 10–15 seconds |
 
-The first import also downloads the separation model, which adds a few minutes once.
+If the separation model is not on your computer yet (normally `make setup` downloads it), the first import downloads it before separating — about 340 MB, once. The progress screen shows *Downloading the separation model* and how far it has got.
+
+**Recent songs.** Songs you have imported are listed under the drop area, most recently used first, with their length and how much disk space they take. Click a title to open it. To remove a song (and its exports), click **Delete**, then click it again within three seconds — the first click only arms it, so nothing is deleted by accident. Your original file is never touched. A song that is still being processed can't be deleted until it is done. The same list opens from **▾** next to the song title in the top bar, so you can switch songs without going back to the import screen.
 
 Each song is identified by its content, so importing the **same file** again opens it instantly with your saved edits. When you reload the page, the last song reopens automatically.
 
@@ -54,7 +56,7 @@ Each song is identified by its content, so importing the **same file** again ope
 
 | Area | What it's for |
 |---|---|
-| **Top bar** | Song title, undo ↩ / redo ↪, save status, language menu, **Import song**, **Export** |
+| **Top bar** | Song title and **▾** (recent songs: switch or delete), undo ↩ / redo ↪, save status, language menu, **Import song**, **Export** |
 | **Left panel** | The four tracks (click to select, **M** mute, **S** solo), **✨ Auto choreography** and the presets |
 | **3D view** | The head, one orbit per track, and a coloured dot showing where each track is right now |
 | **Right panel** | Settings for the selected track in the current section, on four tabs: **Orbit**, **Mix**, **Section**, **Space** |
@@ -117,16 +119,19 @@ When a song opens for the first time, Orbit 8D applies its **auto choreography**
 
 | Section | Motion | Reverb |
 |---|---|---|
-| Intro and outro | A slow spiral raised to about 35°, turning half as fast | +4 dB |
-| Verse | Classic 8D: everything circles the head at ear height | default |
-| Chorus | Twice as fast; vocals and instruments on opposite 45° diagonal orbits; bass stays in front | default |
-| Bridge | 3D cross: vocals loop over your head from ear to ear, instruments from front to back | +2 dB |
+| Intro | A slow spiral raised to about 35°, turning half as fast, clockwise | +4 dB |
+| Outro | The same spiral, counter-clockwise | +4 dB |
+| Verse | Classic 8D: everything circles the head at ear height; the next verse turns the other way | default |
+| Chorus | Twice as fast. First chorus: vocals and instruments on opposite 45° diagonal orbits (bass stays in front). Second: the mirror image, tilted the other way and turning the other way. Third: three layers (vocals on top, instruments at height, drums around you) | default |
+| Bridge | 3D cross: vocals loop over your head from ear to ear, instruments from front to back. A second bridge tumbles front-to-back instead | +2 dB |
+
+Repeated sections cycle through these variations in order, so a song never repeats the same move twice in a row. Sections you name yourself are treated as verses.
 
 It also adds two kinds of **events**: vocals and instruments **fly overhead** for two bars at the start of the loudest chorus, and in every verse of eight bars or more the vocals **hold** still for one bar about three quarters of the way through.
 
 Section detection is automatic and approximate. If a section is labelled wrongly, rename it on the Section tab, drag its boundaries, or just change its orbits — the label only chooses the starting motion.
 
-Click **✨ Auto choreography** at any time to rebuild the choreography from scratch. This replaces your current edits (you can undo it).
+Click **✨ Auto choreography** at any time to choreograph again **using the sections as they are now on the timeline** — your boundaries and section names are kept, and so are the Mix tab, the room and rear darkening. It replaces the orbits, the per-section reverb and the events (you can undo it). The fly-over goes to the loudest chorus, measured from the original song.
 
 ### Presets
 
@@ -208,7 +213,7 @@ Limits: up to 16 sections and 64 events. Two events of the same kind cannot over
 
 ![Export dialog](images/export.jpg)
 
-Click **Export** and choose a format:
+Click **Export** and choose a format and a loudness:
 
 | Format | Details | Cover art |
 |---|---|---|
@@ -217,6 +222,8 @@ Click **Export** and choose a format:
 | FLAC | Lossless, 24-bit | ✔ |
 | WAV | Lossless, 24-bit | — |
 | OGG | Opus 192 kbps | — |
+
+**Loudness.** *Loud* (the default) is exactly what you hear in the preview, mastered to about −9 LUFS when the song allows it. *Standard* masters to −14 LUFS, the level most streaming services use — quieter and easier on long listening sessions. Both keep every peak below −1 dBTP, and very dynamic songs may come out a little quieter than the target to avoid squashing them.
 
 The export is rendered at full quality on your computer (about 10 seconds for a 4-minute song after it starts), then downloaded as `Artist - Title (8D).<ext>`. The title (with " (8D)"), artist and album are copied from the original. The finished file is also kept in `data/exports/`, and exporting the same scene in the same format again is instant.
 
@@ -272,8 +279,17 @@ The server has stopped. Run `make run` again and reload the page.
 **Section detection got the structure wrong.**
 It is a best guess from loudness, timbre and where the vocals are. Drag the boundaries, split or delete sections, and rename them — or ignore the labels and edit the orbits directly.
 
+**The first import says "Downloading the separation model".**
+That happens once, when the model was not downloaded during setup (about 340 MB). If it fails, check your internet connection and import the song again, or run `make assets` in the terminal.
+
+**"The last export was interrupted".**
+The app was closed while an export was running. Export again — nothing else is lost.
+
+**A song can't be deleted ("still being processed").**
+Wait until it has finished importing (or an export of it has finished), then delete it again.
+
 **Exporting is slow or the computer runs out of memory.**
-Exporting a 4-minute song briefly needs about 5–6 GB of memory. Close other large applications and try again.
+Songs are processed in segments of about ten seconds, so a 4-minute song needs about 1 GB of memory and even a 20-minute song stays under 3 GB. Close other large applications if your computer is very short of memory.
 
 **Where are my files?**
 Everything is in the `data/` folder (see [Your data](../README.md#your-data)). Detailed error information is in `data/logs/orbit8d.log`.
