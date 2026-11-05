@@ -107,6 +107,7 @@ export class App {
   private eqSeq = 0;
   private selectedEvent: number | null = null;
   private scrubTime: number | null = null; // 正在拖播放头时的预览位置
+  private drawnTime = Number.NaN; // 3D 上一次画的是哪个时刻（按需重画用）
   private resumeAfterScrub = false;
   private readonly history = new History<Scene>();
   private saveTimer = 0;
@@ -328,6 +329,7 @@ export class App {
     this.title.textContent = "";
     this.transport.setInfo("");
     for (const view of this.views.values()) view.group.visible = false;
+    this.stage.invalidate();
     this.go("empty");
     void this.showDropPage();
   }
@@ -405,6 +407,7 @@ export class App {
     await this.engine.setEq(await api.sceneEq(project.id, scene));
     this.applyScene(scene, { record: false, save: false, refreshEq: false });
     for (const view of this.views.values()) view.group.visible = true;
+    this.stage.invalidate();
     this.setSaveState("saved");
     this.title.textContent = project.source.title
       ? `${project.source.artist ? `${project.source.artist} - ` : ""}${project.source.title}`
@@ -445,6 +448,7 @@ export class App {
       domeVisible: () => this.dome.visible,
       toggleDome: (visible) => {
         this.dome.visible = visible;
+        this.stage.invalidate();
         storage()?.setItem(DOME_KEY, visible ? "1" : "0");
       },
     };
@@ -647,6 +651,7 @@ export class App {
     this.tracksPanel.sync(ctx);
     this.orbitPanel.sync(ctx);
     this.timeline.setScene(scene, this.duration, this.section, this.selectedEvent);
+    this.stage.invalidate();
   }
 
   /** 场景改完 250 ms 没再改，就向后端要这个场景的补偿 EQ；只用最后一次请求的结果。 */
@@ -679,10 +684,10 @@ export class App {
     this.loadedRoom = room;
   }
 
-  // ---------- 每帧 ----------
-  private tick(): void {
+  // ---------- 每帧：返回 true 表示 3D 画面在动（播放中、拖播放头、播放位置跳了），要重画 ----------
+  private tick(): boolean {
     const analysis = this.project?.analysis;
-    if (!this.scene || !analysis || !this.project || !this.timing || !this.motions) return;
+    if (!this.scene || !analysis || !this.project || !this.timing || !this.motions) return false;
     if (this.paramsDirty) {
       this.paramsDirty = false;
       const params = buildRenderParams(this.scene, this.timing, analysis.calibration, this.project.preview_scale);
@@ -700,6 +705,9 @@ export class App {
     this.timeline.setTime(t);
     this.transport.update(t, this.engine.duration, this.engine.playing);
     this.transport.setLevels(this.engine.levels());
+    const moved = t !== this.drawnTime;
+    this.drawnTime = t;
+    return moved;
   }
 
   private async seek(t: number): Promise<void> {

@@ -1,10 +1,12 @@
 // 3D 舞台：渲染器、相机、环境光照、轨道控制器与逐帧回调。不做辉光后处理：声音位置用固定大小的实心色点表示。
+// 按需重画：逐帧回调照常跑（更新色点位置、电平表等），但只有画面真的变了才调用 WebGL 渲染（scene/redraw.ts）。
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { FrameInfo } from "./orbits";
 import { spriteScaleForPixels } from "./mapping";
+import { needsRedraw } from "./redraw";
 
 const BACKGROUND = 0x0b0d12;
 const CAMERA_FOV = 34;
@@ -15,7 +17,8 @@ const DISTANCE_RINGS_M = [1, 2]; // 只留两圈参考距离，减少杂线
 const FLOOR_Y = -0.3; // 人头模型带肩膀，肩膀底部约在耳朵下方 0.27 处
 const MAX_PIXEL_RATIO = 2;
 
-export type FrameCallback = (dt: number) => void;
+/** 逐帧回调；返回 true 表示这一帧画面在动（要重画）。 */
+export type FrameCallback = (dt: number) => boolean | void;
 
 export class Stage {
   readonly renderer: THREE.WebGLRenderer;
@@ -25,6 +28,7 @@ export class Stage {
   private readonly callbacks = new Set<FrameCallback>();
   private readonly timer = new THREE.Timer();
   private readonly resizeObserver: ResizeObserver;
+  private dirty = true;
 
   constructor(private readonly container: HTMLElement, ringRadius: (distM: number) => number) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -89,10 +93,16 @@ export class Stage {
     return { pixelScale: spriteScaleForPixels(1, this.camera.fov, height), width, height };
   }
 
+  /** 画面内容变了（场景、选中、显示开关……），下一帧重画。 */
+  invalidate(): void {
+    this.dirty = true;
+  }
+
   resetView(): void {
     this.camera.position.copy(CAMERA_START);
     this.controls.target.copy(CAMERA_TARGET);
     this.controls.update();
+    this.invalidate();
   }
 
   private resize(): void {
@@ -101,13 +111,17 @@ export class Stage {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.invalidate();
   }
 
   private frame(time: number): void {
     this.timer.update(time);
     const dt = this.timer.getDelta();
-    for (const cb of this.callbacks) cb(dt);
-    this.controls.update();
+    let animating = false;
+    for (const cb of this.callbacks) animating = cb(dt) === true || animating;
+    const cameraMoved = this.controls.update();
+    if (!needsRedraw({ dirty: this.dirty, cameraMoved, animating })) return;
+    this.dirty = false;
     this.renderer.render(this.scene, this.camera);
   }
 
