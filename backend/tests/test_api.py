@@ -509,3 +509,21 @@ def test_first_separation_reports_the_model_download(data_dir, tmp_path, fail):
         assert body["state"] == "FAILED" and body["error"]["code"] == "MODEL_DOWNLOAD_FAILED"
     else:
         assert body["state"] == "READY" and body["step"] == ""
+
+
+def test_interrupted_export_gets_its_own_error_code(client, ready_project, data_dir):
+    """上次导出到一半服务被关：重启后标为失败，错误码与“导入被中断”分开（界面提示“重新导出即可”）。"""
+    import json
+
+    resp = client.post(
+        f"/api/projects/{ready_project}/exports", json={"scene": Scene().model_dump(), "format": "wav"}
+    )
+    wait_idle(client)
+    eid = resp.json()["id"]
+    record = data_dir / "exports" / eid / "record.json"
+    data = json.loads(record.read_text())
+    data["state"] = "RENDERING"
+    record.write_text(json.dumps(data))
+    with TestClient(create_app(load_settings(), FakeSeparator()), base_url=BASE) as fresh:
+        body = fresh.get(f"/api/exports/{eid}").json()
+    assert body["state"] == "FAILED" and body["error"]["code"] == "EXPORT_INTERRUPTED"

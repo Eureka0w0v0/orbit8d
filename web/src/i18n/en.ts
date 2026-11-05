@@ -85,6 +85,7 @@ export const en: Messages = {
     deleteConfirm: "Click again to delete",
     deleteSongTitle: "Delete this song and its exports (the original file on your computer is not touched)",
     songDeleted: (title: string) => `Deleted “${title}”`,
+    exportFailed: (reason: string) => `Export failed: ${reason}`,
     presets: "Presets",
     tracks: "Tracks",
     room: "Room",
@@ -171,6 +172,7 @@ export const en: Messages = {
     STATE_CONFLICT: "State conflict, please try again",
     MODEL_DOWNLOAD_FAILED: "Could not download the separation model; check the network and import the song again",
     SEPARATION_FAILED: "Stem separation failed",
+    EXPORT_INTERRUPTED: "The last export was interrupted; export again",
     PROJECT_BUSY: "The song is still being processed; delete it when it is done",
   },
 };

@@ -83,6 +83,7 @@ export const zh = {
     deleteConfirm: "再点一次删除",
     deleteSongTitle: "删除这首歌和它的导出（不会动你电脑上的原文件）",
     songDeleted: (title: string) => `已删除「${title}」`,
+    exportFailed: (reason: string) => `导出失败：${reason}`,
     presets: "一键预设",
     tracks: "音轨",
     room: "房间",
@@ -163,6 +164,7 @@ export const zh = {
     STATE_CONFLICT: "状态冲突，请重试",
     MODEL_DOWNLOAD_FAILED: "分轨模型下载失败，请检查网络后重新导入",
     SEPARATION_FAILED: "分轨失败",
+    EXPORT_INTERRUPTED: "上次导出被中断，重新导出即可",
     PROJECT_BUSY: "这首歌还在处理中，处理完再删",
   },
 };

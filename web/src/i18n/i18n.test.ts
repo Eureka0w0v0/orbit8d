@@ -59,5 +59,8 @@ describe("显示名", () => {
     expect(errorText("DECODE_TIMEOUT", "", DICTIONARIES.en)).toBe("Processing timed out");
     expect(errorText("SOMETHING_NEW", "server text", DICTIONARIES.en)).toBe("server text");
     expect(errorText("SOMETHING_NEW", "", DICTIONARIES.zh)).toBe("内部错误");
+    expect(errorText("EXPORT_INTERRUPTED", "server text", DICTIONARIES.zh)).toBe("上次导出被中断，重新导出即可");
+    expect(errorText("MODEL_DOWNLOAD_FAILED", "", DICTIONARIES.en)).toMatch(/separation model/);
+    expect(DICTIONARIES.ja.ui.exportFailed(errorText("ENCODE_FAILED", "", DICTIONARIES.ja))).toBe("書き出しに失敗しました：エンコードに失敗しました");
   });
 });

@@ -775,7 +775,7 @@ export class App {
         (r) => r.state === "DONE" || r.state === "FAILED",
         (r) => this.exportDialog.progress(EXPORT_STATE_LABEL[r.state]),
       );
-      if (rec.state === "FAILED") this.exportDialog.error(`${EXPORT_STATE_LABEL.FAILED}：${rec.error?.message ?? ""}`);
+      if (rec.state === "FAILED") this.exportDialog.error(TEXT.exportFailed(errorText(rec.error?.code ?? "INTERNAL", rec.error?.message ?? "")));
       else this.exportDialog.done(api.exportUrl(rec.id), rec.file_name);
     } catch (err) {
       this.exportDialog.error(describe(err));

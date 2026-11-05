@@ -20,7 +20,8 @@ log = logging.getLogger(__name__)
 ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
 RECORD_FILE = "record.json"
 SCENE_FILE = "scene.json"
-INTERRUPTED = "INTERRUPTED"
+PROJECT_INTERRUPTED = "INTERRUPTED"
+EXPORT_INTERRUPTED = "EXPORT_INTERRUPTED"
 UPLOAD_SUFFIX = ".part"
 
 
@@ -294,10 +295,10 @@ class Store:
         for rec in self.list_projects():
             if not is_terminal(rec.state):
                 message = "The last run was interrupted; import the song again to retry"
-                self.fail_project(rec.id, INTERRUPTED, message)
+                self.fail_project(rec.id, PROJECT_INTERRUPTED, message)
         for data in self._records(self.settings.exports_dir):
             rec = ExportRecord.from_dict(data)
             if not is_terminal(rec.state):
                 self.fail_export(
-                    rec.id, INTERRUPTED, "The last export was interrupted; export again to retry"
+                    rec.id, EXPORT_INTERRUPTED, "The last export was interrupted; export again to retry"
                 )

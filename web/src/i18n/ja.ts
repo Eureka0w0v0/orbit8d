@@ -86,6 +86,7 @@ export const ja: Messages = {
     deleteConfirm: "もう一度押すと削除",
     deleteSongTitle: "この曲と書き出したファイルを削除します（パソコン上の元ファイルはそのまま）",
     songDeleted: (title: string) => `「${title}」を削除しました`,
+    exportFailed: (reason: string) => `書き出しに失敗しました：${reason}`,
     presets: "プリセット",
     tracks: "トラック",
     room: "ルーム",
@@ -168,6 +169,7 @@ export const ja: Messages = {
     STATE_CONFLICT: "状態が競合しました。もう一度お試しください",
     MODEL_DOWNLOAD_FAILED: "分離モデルをダウンロードできませんでした。ネットワークを確認して読み込み直してください",
     SEPARATION_FAILED: "音源分離に失敗しました",
+    EXPORT_INTERRUPTED: "前回の書き出しが中断されました。もう一度書き出してください",
     PROJECT_BUSY: "この曲はまだ処理中です。終わってから削除してください",
   },
 };
