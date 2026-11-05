@@ -21,6 +21,10 @@ class FakeSeparator:
 
     def __init__(self) -> None:
         self.calls = 0
+        self.model_checks = 0
+
+    def ensure_model(self, on_progress: Callable[[float], None]) -> None:
+        self.model_checks += 1  # 假分轨器不需要模型，只记下被问过
 
     def separate(self, wav: Path, out_dir: Path, on_progress: Callable[[float], None]) -> None:
         self.calls += 1

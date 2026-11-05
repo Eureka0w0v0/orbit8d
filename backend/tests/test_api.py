@@ -464,3 +464,48 @@ def test_startup_cleans_trash_uploads_and_stale_assets(data_dir):
     left = {p.name for p in (data_dir / "assets").iterdir()}
     assert not {"eq_44100.wav", "brir_hall_44100.wav", "brir_v1_room_44100.wav", "hrtf.tmp"} & left
     assert any(name.endswith(".sofa") for name in left)  # HRTF 原始数据不动
+
+
+# ---------- 分轨模型（SPEC §4.2） ----------
+
+
+class DownloadingSeparator(FakeSeparator):
+    """第一次分轨前“下载模型”：下载途中看得到子步骤与进度；fail=True 时下载失败。"""
+
+    def __init__(self, store_probe, fail: bool = False):
+        super().__init__()
+        self.store_probe, self.fail, self.seen = store_probe, fail, []
+
+    def ensure_model(self, on_progress):
+        on_progress(0.5)
+        self.seen.append(self.store_probe())
+        if self.fail:
+            from orbit8d.separate.model import ModelDownloadError
+
+            raise ModelDownloadError("simulated network failure")
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_first_separation_reports_the_model_download(data_dir, tmp_path, fail):
+    holder = {}
+
+    def probe():
+        rec = holder["app"].state.store.find_project(holder["pid"])
+        return rec.state, rec.step, rec.progress
+
+    separator = DownloadingSeparator(probe, fail)
+    app = create_app(load_settings(), separator)
+    holder["app"] = app
+    song = write_song(tmp_path / "song.wav")
+    import hashlib
+
+    holder["pid"] = hashlib.sha256(song.read_bytes()).hexdigest()[:16]
+    with TestClient(app, base_url=BASE) as c:
+        assert upload(c, song).status_code == 202
+        wait_idle(c)
+        body = c.get(f"/api/projects/{holder['pid']}").json()
+    assert separator.seen == [("SEPARATING", "model_download", 0.5)]
+    if fail:
+        assert body["state"] == "FAILED" and body["error"]["code"] == "MODEL_DOWNLOAD_FAILED"
+    else:
+        assert body["state"] == "READY" and body["step"] == ""

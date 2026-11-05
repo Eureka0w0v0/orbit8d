@@ -76,6 +76,7 @@ export const zh = {
     download: "下载",
     close: "关闭",
     retry: "重新选择文件",
+    modelDownload: "正在下载分轨模型（仅首次，约 340 MB）",
     recentSongs: "最近的歌",
     songMenuTitle: "切换或删除已导入的歌",
     deleteSong: "删除",
@@ -160,6 +161,8 @@ export const zh = {
     INTERRUPTED: "上次处理被中断，重新导入即可重试",
     INTERNAL: "内部错误",
     STATE_CONFLICT: "状态冲突，请重试",
+    MODEL_DOWNLOAD_FAILED: "分轨模型下载失败，请检查网络后重新导入",
+    SEPARATION_FAILED: "分轨失败",
     PROJECT_BUSY: "这首歌还在处理中，处理完再删",
   },
 };

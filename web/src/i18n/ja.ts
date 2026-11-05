@@ -79,6 +79,7 @@ export const ja: Messages = {
     download: "ダウンロード",
     close: "閉じる",
     retry: "ファイルを選び直す",
+    modelDownload: "分離モデルをダウンロード中（初回のみ・約 340 MB）",
     recentSongs: "最近の曲",
     songMenuTitle: "読み込んだ曲を切り替え・削除",
     deleteSong: "削除",
@@ -165,6 +166,8 @@ export const ja: Messages = {
     INTERRUPTED: "前回の処理が中断されました。もう一度読み込むと再試行します",
     INTERNAL: "内部エラーが発生しました",
     STATE_CONFLICT: "状態が競合しました。もう一度お試しください",
+    MODEL_DOWNLOAD_FAILED: "分離モデルをダウンロードできませんでした。ネットワークを確認して読み込み直してください",
+    SEPARATION_FAILED: "音源分離に失敗しました",
     PROJECT_BUSY: "この曲はまだ処理中です。終わってから削除してください",
   },
 };

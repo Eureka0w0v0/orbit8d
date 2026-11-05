@@ -121,6 +121,7 @@ export interface Project {
   id: string;
   state: ProjectState;
   progress: number;
+  step: string; // 当前状态里的子步骤："model_download" = 第一次下载分轨模型
   error: ApiErrorBody | null;
   source: SourceInfo;
   analysis: Analysis | null;

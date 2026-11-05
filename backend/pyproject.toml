@@ -11,7 +11,9 @@ dependencies = [
     "soundfile>=0.12",
     "h5py>=3.10",
     "pyloudnorm>=0.1.1",
-    "demucs>=4.0.1",
+    "demucs>=4.1.0",  # 4.1 起有 HuggingFace 模型加载与分轨进度回调
+    "huggingface-hub>=0.25",  # 查本机已有的模型缓存（demucs 也用它）
+    "pyyaml>=6",  # 读模型组合配置
     "torch<2.9",
     "torchaudio<2.9",
 ]
@@ -25,6 +27,8 @@ dev = [
 
 [tool.uv]
 package = false
+# 支持的平台（README：Apple Silicon 的 macOS、Linux）；Intel Mac 上 demucs 4.1 与 numpy 2 冲突，装不上
+environments = ["sys_platform == 'darwin' and platform_machine == 'arm64'", "sys_platform == 'linux'"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

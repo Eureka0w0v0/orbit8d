@@ -23,7 +23,7 @@ def main() -> None:
     args = parser.parse_args()
     settings = load_settings()
     setup_logging(settings.logs_dir)
-    app = create_app(settings, DemucsSeparator())
+    app = create_app(settings, DemucsSeparator(settings.assets_dir))
     if not args.no_browser:
         url = f"http://{HOST}:{settings.port}/"
         threading.Timer(BROWSER_DELAY_S, webbrowser.open, args=(url,)).start()

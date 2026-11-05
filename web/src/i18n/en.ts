@@ -78,6 +78,7 @@ export const en: Messages = {
     download: "Download",
     close: "Close",
     retry: "Choose another file",
+    modelDownload: "Downloading the separation model (first time only, about 340 MB)",
     recentSongs: "Recent songs",
     songMenuTitle: "Switch to or delete an imported song",
     deleteSong: "Delete",
@@ -168,6 +169,8 @@ export const en: Messages = {
     INTERRUPTED: "The last run was interrupted; import the song again to retry",
     INTERNAL: "Internal error",
     STATE_CONFLICT: "State conflict, please try again",
+    MODEL_DOWNLOAD_FAILED: "Could not download the separation model; check the network and import the song again",
+    SEPARATION_FAILED: "Stem separation failed",
     PROJECT_BUSY: "The song is still being processed; delete it when it is done",
   },
 };

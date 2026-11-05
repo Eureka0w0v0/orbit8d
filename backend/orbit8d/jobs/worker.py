@@ -30,11 +30,12 @@ from orbit8d.engine.pipeline import (
     analyze,
 )
 from orbit8d.engine.scene import Scene
+from orbit8d.errors import CodedError
 from orbit8d.jobs.states import ExportState, IllegalTransition, ProjectState
 from orbit8d.jobs.store import NotFound, ProjectRecord, Store
 from orbit8d.logging_setup import trace
 from orbit8d.media.audiofile import AudioFile, write_audio
-from orbit8d.media.ffmpeg import OUTPUT_FORMATS, MediaError, decode_to_wav, encode
+from orbit8d.media.ffmpeg import OUTPUT_FORMATS, decode_to_wav, encode
 
 log = logging.getLogger(__name__)
 
@@ -51,11 +52,16 @@ PREVIEW_SUBTYPE = STEM_SUBTYPE = "PCM_24"
 FLAC_TOLERANCE_LSB = 4  # 24 位 FLAC 读回与原值的允许误差（量化 + 读写归一化差，实际约 1.5 个最低位）
 POLL_S = 0.2
 ANALYZED_PROGRESS = 0.7
+STEP_MODEL_DOWNLOAD = "model_download"  # 分轨阶段里第一次下载模型（界面单独显示）
+PROGRESS_STEP = 0.005  # 进度至少涨这么多才写一次记录
 MAX_NAME = 100
 UNSAFE_CHARS = re.compile(r'[\x00-\x1f\x7f/\\:*?"<>|]')
 
 
 class Separator(Protocol):
+    def ensure_model(self, on_progress: Callable[[float], None]) -> None:
+        """模型不在本机就下载（只有第一次；on_progress 收到下载进度），然后加载。"""
+
     def separate(self, wav: Path, out_dir: Path, on_progress: Callable[[float], None]) -> None: ...
 
 
@@ -185,8 +191,8 @@ class JobRunner:
                 log.info("job finished", extra={"event": "job.done", "kind": job.kind})
             except NotFound:  # 不该发生（有任务的歌不能删）：记下来，不往已删的目录里写失败记录
                 log.error("job target is gone", exc_info=True, extra={"event": "job.gone", "kind": job.kind})
-            except MediaError as exc:
-                log.warning("job media error", extra={"event": "job.media_error", "code": exc.code})
+            except CodedError as exc:  # 解码 / 编码 / 下载模型 / 分轨等有错误码的失败：界面按错误码提示
+                log.warning("job failed", exc_info=True, extra={"event": "job.failed", "code": exc.code})
                 fail(job.id, exc.code, str(exc))
             except IllegalTransition as exc:
                 log.error("job state conflict", exc_info=True, extra={"event": "job.state_conflict"})
@@ -254,14 +260,25 @@ class JobRunner:
         try:
             decode_to_wav(pdir / SOURCE_FILE, pdir / ORIG_FILE, SAMPLE_RATE)
             store.transition_project(pid, ProjectState.SEPARATING)
-            self._separator.separate(
-                pdir / ORIG_FILE, pdir / STEMS_DIR, lambda p: store.set_project_progress(pid, p)
-            )
+            self._separator.ensure_model(self._progress(pid, STEP_MODEL_DOWNLOAD))
+            store.set_project_progress(pid, 0.0, step="")
+            self._separator.separate(pdir / ORIG_FILE, pdir / STEMS_DIR, self._progress(pid))
             store.transition_project(pid, ProjectState.ANALYZING)
             self._compress_stems(pid)
             self._finish_analysis(pid)
         finally:
             (pdir / ORIG_FILE).unlink(missing_ok=True)
+
+    def _progress(self, pid: str, step: str | None = None) -> Callable[[float], None]:
+        """进度回调：每涨 PROGRESS_STEP 才写一次记录（下载、分轨都是每 MB / 每段回调一次）。"""
+        last = [-1.0]
+
+        def report(fraction: float) -> None:
+            if fraction >= 1.0 or fraction - last[0] >= PROGRESS_STEP:
+                last[0] = fraction
+                self._store.set_project_progress(pid, fraction, step=step)
+
+        return report
 
     def _run_refresh(self, pid: str) -> None:
         """项目已处于“分析中”（refresh_stale 转过去的）：从原文件重新解码再分析，不重新分轨。"""

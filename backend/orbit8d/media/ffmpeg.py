@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from orbit8d.errors import CodedError
+
 PROBE_TIMEOUT_S = 30
 DECODE_TIMEOUT_S = 600
 ENCODE_TIMEOUT_S = 900
@@ -15,10 +17,8 @@ ALLOWED_CODECS = frozenset({"mp3", "aac", "alac", "flac", "vorbis", "opus"})
 ALLOWED_CODEC_PREFIX = "pcm_"
 
 
-class MediaError(RuntimeError):
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
+class MediaError(CodedError):
+    """解码、编码、探测失败（错误码见各调用处）。"""
 
 
 @dataclass(frozen=True)

@@ -3,12 +3,12 @@
 BACKEND := backend
 WEB := web
 
-setup:            ## 安装前后端依赖并下载 HRTF 数据
+setup:            ## 安装前后端依赖并下载 HRTF 数据与分轨模型
 	cd $(BACKEND) && uv sync
 	cd $(WEB) && npm install
 	$(MAKE) assets
 
-assets:           ## 下载 KU100 全球面 HRTF（约 20 MB，校验 sha256）
+assets:           ## 下载 KU100 全球面 HRTF（约 20 MB）与 Demucs 分轨模型（约 340 MB，HuggingFace 缓存里有就不重下），都校验 sha256
 	cd $(BACKEND) && uv run python -m orbit8d.assets
 
 dev:              ## 同时启动后台（8765）和前端开发服务器（5173）

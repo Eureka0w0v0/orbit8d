@@ -38,6 +38,7 @@ class ProjectRecord:
     state: ProjectState
     source: dict
     progress: float = 0.0
+    step: str = ""  # 当前状态里的子步骤（如分轨前第一次下载模型），界面据此换提示
     error: dict | None = None
     analysis: dict | None = None
     preview_scale: float = 1.0
@@ -137,7 +138,7 @@ class Store:
             rec = self.get_project(pid)
             check_transition(rec.state, target)
             previous = rec.state
-            rec.state, rec.progress = target, 0.0
+            rec.state, rec.progress, rec.step = target, 0.0, ""
             if target is not ProjectState.FAILED:
                 rec.error = None
             for key, value in changes.items():
@@ -146,10 +147,13 @@ class Store:
         log.info("project transition", extra={"event": "project.transition", "from": previous, "to": target})
         return rec
 
-    def set_project_progress(self, pid: str, progress: float) -> None:
+    def set_project_progress(self, pid: str, progress: float, step: str | None = None) -> None:
+        """step 为 None 时不改子步骤。"""
         with self._lock:
             rec = self.get_project(pid)
             rec.progress = min(max(progress, 0.0), 1.0)
+            if step is not None:
+                rec.step = step
             self.save_project(rec)
 
     def set_stem_scale(self, pid: str, name: str, scale: float) -> None:

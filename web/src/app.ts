@@ -58,6 +58,7 @@ const STAGE_SPAN: Partial<Record<Project["state"], [number, number]>> = {
   ANALYZING: [0.88, 1],
 };
 const BUSY: ReadonlySet<Project["state"]> = new Set(["UPLOADED", "DECODING", "SEPARATING", "ANALYZING"]);
+const MODEL_DOWNLOAD_STEP = "model_download"; // 分轨前第一次下载模型（后端 Project.step）
 const STEREO: ReadonlySet<TrackName> = new Set(["drums", "other"]);
 const TEXT_ENTRY = new Set(["TEXTAREA", "SELECT"]);
 const TEXT_INPUT_TYPES = new Set(["text", "search", "number", "email", "password", "url"]);
@@ -335,7 +336,10 @@ export class App {
     const done = await poll(
       () => api.project(project.id),
       (p) => p.state === "READY" || p.state === "FAILED",
-      (p) => this.overlay.showProgress(PROJECT_STATE_LABEL[p.state], this.overallProgress(p), p.source.filename),
+      (p) =>
+        p.step === MODEL_DOWNLOAD_STEP
+          ? this.overlay.showProgress(TEXT.modelDownload, p.progress, p.source.filename)
+          : this.overlay.showProgress(PROJECT_STATE_LABEL[p.state], this.overallProgress(p), p.source.filename),
     );
     if (done.state === "FAILED") {
       throw new ApiError(0, done.error?.code ?? "FAILED", done.error?.message ?? PROJECT_STATE_LABEL.FAILED);
