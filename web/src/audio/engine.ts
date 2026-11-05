@@ -1,6 +1,7 @@
 // 试听音频引擎：9 声道缓冲 → AudioWorklet（双耳 + 已乘分段混响量的送出信号）→ BRIR 卷积（混响）
 // → 按场景的补偿 EQ（两个卷积器交叉淡化切换，换 EQ 不爆音）→ 试听总增益 → 兜底限幅。
 // 原曲（A/B 对比）与 8D 同时播放、采样级同步，只是其中一路音量为 0；切换时 40 ms 交叉淡化。
+// 播放 10 ms 淡入、暂停 / 跳转 15 ms 淡出后再停（每次播放各有一个淡入淡出节点），不硬切出咔哒声。
 
 import workletUrl from "./worklet.ts?worker&url";
 import { parseHrtf } from "./hrtf";
@@ -10,6 +11,8 @@ import type { WorkletMessage } from "./worklet";
 export const SAMPLE_RATE = 44100;
 const PROCESSOR_NAME = "orbit8d-binaural";
 const START_LATENCY_S = 0.06;
+const FADE_IN_S = 0.01;
+const FADE_OUT_S = 0.015; // 必须小于 START_LATENCY_S：跳转时旧的淡出先结束，新的才开始
 const PARAM_RAMP_S = 0.05;
 const EQ_FADE_S = 0.08;
 const AB_FADE_S = 0.04;
@@ -53,6 +56,7 @@ export class AudioEngine {
   private readonly meterBuf = new Float32Array(METER_FFT);
   private buffer: AudioBuffer | null = null;
   private source: AudioBufferSourceNode | null = null;
+  private fades: GainNode[] = []; // 本次播放的淡入淡出（8D 输入、原曲各一个）
   private songOffset = 0;
   private startCtxTime = 0;
   playing = false;
@@ -219,20 +223,32 @@ export class AudioEngine {
     return Math.min(this.duration, this.songOffset + Math.max(0, this.ctx.currentTime - this.startCtxTime));
   }
 
+  /** 淡入淡出节点：从 when 开始 FADE_IN_S 淡入。 */
+  private fadeIn(when: number): GainNode {
+    const fade = this.ctx.createGain();
+    fade.gain.setValueAtTime(0, when);
+    fade.gain.linearRampToValueAtTime(1, when + FADE_IN_S);
+    return fade;
+  }
+
   async play(): Promise<void> {
     if (!this.buffer || !this.node || this.playing) return;
     await this.ctx.resume();
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.buffer;
-    src.connect(this.node);
     const when = this.ctx.currentTime + START_LATENCY_S;
     const offset = this.songOffset >= this.duration ? 0 : this.songOffset;
-    this.post({ type: "transport", playing: true, startFrame: Math.round(when * SAMPLE_RATE), songOffset: offset });
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.buffer;
+    const fade = this.fadeIn(when);
+    src.connect(fade).connect(this.node);
+    this.fades = [fade];
+    this.post({ type: "start", startFrame: Math.round(when * SAMPLE_RATE), songOffset: offset });
     src.start(when, offset);
     if (this.original) {
       const orig = this.ctx.createBufferSource(); // 同一时刻、同一位置开始：与 8D 采样级同步
       orig.buffer = this.original;
-      orig.connect(this.pathOriginal);
+      const origFade = this.fadeIn(when);
+      orig.connect(origFade).connect(this.pathOriginal);
+      this.fades.push(origFade);
       orig.start(when, offset);
       this.originalSource = orig;
     }
@@ -241,8 +257,11 @@ export class AudioEngine {
       this.playing = false;
       this.songOffset = this.duration;
       this.source = null;
+      src.disconnect();
       this.originalSource?.disconnect(); // 原曲与 8D 等长，同时播完
       this.originalSource = null;
+      for (const f of this.fades) f.disconnect();
+      this.fades = [];
       this.onEnded?.();
     };
     this.source = src;
@@ -265,21 +284,27 @@ export class AudioEngine {
     if (wasPlaying) await this.play();
   }
 
+  /** 淡出 FADE_OUT_S 后停下；worklet 照常渲染到停止那一帧，输出跟着淡出。 */
   private stop(): void {
-    if (this.originalSource) {
-      const orig = this.originalSource;
-      this.originalSource = null;
-      orig.stop();
-      orig.disconnect();
+    const end = this.ctx.currentTime + FADE_OUT_S;
+    for (const fade of this.fades) {
+      fade.gain.cancelScheduledValues(this.ctx.currentTime);
+      fade.gain.setValueAtTime(fade.gain.value, this.ctx.currentTime);
+      fade.gain.linearRampToValueAtTime(0, end);
     }
-    if (this.source) {
-      const src = this.source;
-      this.source = null;
-      src.onended = null;
-      src.stop();
-      src.disconnect();
+    const fades = this.fades;
+    this.fades = [];
+    for (const src of [this.source, this.originalSource]) {
+      if (!src) continue;
+      src.onended = () => {
+        src.disconnect();
+        for (const fade of fades) fade.disconnect();
+      };
+      src.stop(end);
     }
-    if (this.playing) this.post({ type: "transport", playing: false, startFrame: 0, songOffset: this.songOffset });
+    this.source = null;
+    this.originalSource = null;
+    if (this.playing) this.post({ type: "stop", stopFrame: Math.round(end * SAMPLE_RATE) });
     this.playing = false;
   }
 }
