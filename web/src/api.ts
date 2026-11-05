@@ -48,6 +48,15 @@ export const api = {
   brir: (room: RoomName) => getBytes(`/api/assets/brir/${room}.wav`),
   choreography: (id: string) => getJson<Scene>(`/api/projects/${id}/choreography`),
 
+  /** ✨ 自动编排：沿用这个场景的分界与段名重新编排（只换各段轨道、混响量与事件）。 */
+  async rechoreograph(id: string, scene: Scene): Promise<Scene> {
+    const resp = await fetch(`/api/projects/${id}/choreography`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scene }),
+    });
+    return (await (await check(resp)).json()) as Scene;
+  },
 
   /** 这首歌上次保存的场景；没保存过返回 null。 */
   async savedScene(id: string): Promise<Scene | null> {

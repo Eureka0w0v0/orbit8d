@@ -489,10 +489,11 @@ export class App {
     }
   }
 
+  /** ✨ 按时间轴上现在的分界与段名重新编排（混音、房间、背后压暗不变）。 */
   private async autoChoreograph(): Promise<void> {
-    if (!this.project) return;
+    if (!this.project || !this.scene) return;
     try {
-      const scene = await api.choreography(this.project.id);
+      const scene = await api.rechoreograph(this.project.id, this.scene);
       await this.ensureRoom(scene.room.name);
       this.applyScene(scene);
       this.toast(TEXT.autoChoreoDone, "info");

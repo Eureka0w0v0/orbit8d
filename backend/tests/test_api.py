@@ -527,3 +527,23 @@ def test_interrupted_export_gets_its_own_error_code(client, ready_project, data_
     with TestClient(create_app(load_settings(), FakeSeparator()), base_url=BASE) as fresh:
         body = fresh.get(f"/api/exports/{eid}").json()
     assert body["state"] == "FAILED" and body["error"]["code"] == "EXPORT_INTERRUPTED"
+
+
+def test_rechoreograph_endpoint_uses_the_posted_sections(client, ready_project):
+    url = f"/api/projects/{ready_project}/choreography"
+    scene = Scene.model_validate(client.get(url).json())
+    scene.sections[0].label = "我的段落"
+    scene.mix["vocals"].gain_db = -3.0
+    resp = client.post(url, json={"scene": scene.model_dump(mode="json")})
+    assert resp.status_code == 200
+    out = Scene.model_validate(resp.json())
+    assert out.sections[0].label == "我的段落" and out.mix["vocals"].gain_db == -3.0
+    bad = scene.model_dump(mode="json")
+    bad["rear_darken_db"] = 99
+    assert client.post(url, json={"scene": bad}).status_code == 422
+    assert (
+        client.post(
+            "/api/projects/0123456789abcdef/choreography", json={"scene": scene.model_dump(mode="json")}
+        ).status_code
+        == 404
+    )

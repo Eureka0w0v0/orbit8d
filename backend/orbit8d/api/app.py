@@ -22,7 +22,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from orbit8d import __version__
 from orbit8d.assets import ensure_hrtf_sofa, prune_stale_assets
 from orbit8d.config import REPO_ROOT, SAMPLE_RATE, Settings
-from orbit8d.engine.choreo import choreograph
+from orbit8d.engine.choreo import choreograph, rechoreograph
 from orbit8d.engine.hrtf import load_grid, to_bytes
 from orbit8d.engine.pipeline import RENDER_VERSION, Analysis, Renderer
 from orbit8d.engine.reverb import BRIR_VERSION, ROOMS
@@ -68,7 +68,7 @@ class ExportRequest(BaseModel):
     format: Literal["m4a", "mp3", "flac", "wav", "ogg"]
 
 
-class EqRequest(BaseModel):
+class SceneRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scene: Scene
 
@@ -277,8 +277,17 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         sections = [SectionInfo(**d) for d in a.sections]
         return choreograph(sections, a.default_bars, a.bpm_norm).model_dump(mode="json")
 
+    @app.post("/api/projects/{pid}/choreography")
+    def post_choreography(pid: str, body: SceneRequest) -> dict:
+        """✨ 自动编排：沿用这个场景的分界与段名重新编排（只换各段轨道、混响量与事件）。"""
+        a = ready_analysis(pid)
+        scene = rechoreograph(
+            body.scene, a.duration_s, a.default_bars, a.bpm_norm, a.envelope_db, a.envelope_hop_s
+        )
+        return scene.model_dump(mode="json")
+
     @app.post("/api/projects/{pid}/eq")
-    def post_scene_eq(request: Request, pid: str, body: EqRequest) -> Response:
+    def post_scene_eq(request: Request, pid: str, body: SceneRequest) -> Response:
         """这个场景的音色补偿 EQ（单声道 float32 WAV 冲激响应），浏览器试听与导出用同一个。"""
         fir = request.app.state.renderer.scene_eq(body.scene, ready_analysis(pid))
         buf = io.BytesIO()

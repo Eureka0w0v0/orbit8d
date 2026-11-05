@@ -146,3 +146,51 @@ def test_loudness_envelope_is_relative_to_the_loudest_moment():
     assert env[8:] == [ENVELOPE_FLOOR_DB] * 2  # 静音压到下限
     assert loudness_envelope(np.zeros(sr), sr) == [ENVELOPE_FLOOR_DB] * 4
     assert len(loudness_envelope(np.ones(sr + 1), sr)) == 5  # 最后不满一格的也算一格
+
+
+def test_repeated_sections_rotate_their_looks(detected):
+    """同类段落按出现次序轮换花样，规则确定（同样输入同样输出）。"""
+    scene = choreograph(detected, default_bars=4, bpm_norm=BPM)
+    assert scene == choreograph(detected, default_bars=4, bpm_norm=BPM)
+    by_label: dict[str, list] = {}
+    for sec in scene.sections:
+        by_label.setdefault(sec.label, []).append(sec.orbits)
+    verses, choruses = by_label[VERSE], by_label[CHORUS]
+    assert [v["vocals"].direction for v in verses] == ["cw", "ccw"]
+    first, mirrored, layers = choruses
+    assert (first["vocals"].yaw_deg, first["vocals"].direction) == (45.0, "cw")
+    assert (mirrored["vocals"].yaw_deg, mirrored["vocals"].direction) == (-45.0, "ccw")
+    assert (mirrored["other"].yaw_deg, mirrored["other"].direction) == (45.0, "cw")
+    assert layers["vocals"].height_deg == 75.0 and layers["vocals"].speed.bars == 2
+    assert by_label[INTRO][0]["vocals"].direction == "cw" and by_label[OUTRO][0]["vocals"].direction == "ccw"
+    assert by_label[OUTRO][0]["vocals"].shape == "spiral"
+
+
+def test_rechoreograph_keeps_the_users_sections_and_mix():
+    """✨ 按用户改过的分界与段名重编：只换轨道、混响量与事件；自定义段名按主歌；
+    最响的副歌用原曲音量起伏来找。"""
+    from orbit8d.engine.choreo import rechoreograph
+    from orbit8d.engine.scene import Room, Section
+
+    bar = BAR
+    starts = [0.0, 4 * bar, 20 * bar, 28 * bar, 36 * bar]
+    labels = [INTRO, "我的段落", CHORUS, VERSE, CHORUS]
+    scene = Scene(sections=[Section(start_s=s, label=label) for s, label in zip(starts, labels, strict=True)])
+    scene.mix["drums"].gain_db, scene.rear_darken_db = -5.0, 9.0
+    scene.room = Room(name="church")
+    duration, hop = 44 * bar, 0.25
+    t = np.arange(int(duration / hop)) * hop
+    envelope = np.where(t >= 36 * bar, 0.0, -12.0).tolist()  # 第二个副歌最响
+
+    out = rechoreograph(scene, duration, 4, BPM, envelope, hop)
+    assert [s.start_s for s in out.sections] == starts and [s.label for s in out.sections] == labels
+    assert out.mix == scene.mix and out.room == scene.room and out.rear_darken_db == 9.0
+    custom, verse = out.sections[1], out.sections[3]
+    assert custom.orbits["vocals"].shape == "circle" and custom.orbits["vocals"].direction == "cw"
+    assert verse.orbits["vocals"].direction == "ccw"  # 自定义段名与主歌共用轮换计数
+    assert out.sections[4].orbits["vocals"].yaw_deg == -45.0  # 第二个副歌：镜像斜环
+    overhead = [e for e in out.events if e.kind == "overhead"]
+    assert len(overhead) == 1 and overhead[0].t_s == pytest.approx(36 * bar)
+    holds = [e.t_s + HOLD_RAMP_S for e in out.events if e.kind == "hold"]  # 完全停住的时刻
+    assert holds == pytest.approx([4 * bar + 12 * bar, 28 * bar + 6 * bar])  # 16 小节、8 小节两段的 3/4 处
+    assert isinstance(Scene.model_validate(out.model_dump()), Scene)

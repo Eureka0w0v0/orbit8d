@@ -101,8 +101,8 @@ export const en: Messages = {
     tabSection: "Section",
     autoChoreo: "✨ Auto choreography",
     autoChoreoTitle:
-      "Re-choreograph by the detected sections: raised, slower intro; faster diagonal chorus; 3D cross in the bridge; a fly-over at the start of the chorus and a hold inside the verse",
-    autoChoreoDone: "Re-choreographed by sections",
+      "Re-choreograph by the sections and names now on the timeline: raised, slower intro; faster diagonal chorus; 3D cross in the bridge; repeated sections get a different move each time; a fly-over at the start of the loudest chorus and a hold inside the verse. Your boundaries, names and mix stay as they are",
+    autoChoreoDone: "Re-choreographed by the current sections",
     presetScope: (section: string) => `Presets only change the current section (${section})`,
     sectionName: "Section name",
     split: "✂ Split here",
