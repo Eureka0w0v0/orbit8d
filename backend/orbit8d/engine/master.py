@@ -18,7 +18,9 @@ EQ_TAPS = 1025
 EQ_NFFT = 8192
 EQ_REF_BAND_HZ = (200.0, 800.0)
 THIRD_OCTAVE_HALF = 2 ** (1 / 6)
-TARGET_LUFS = -9.0
+# 导出响度：响亮（默认，与试听一致）/ 标准（适合长时间听）
+LOUDNESS_TARGETS = {"loud": -9.0, "standard": -14.0}
+TARGET_LUFS = LOUDNESS_TARGETS["loud"]
 CEILING_DBTP = -1.0
 LIMIT_ALLOW_DB = 1.0  # 只允许约 1% 的 30 ms 片段被压超过 1 dB（保住动态，代价是整体略小声）
 LIMIT_PERCENTILE = 99.0

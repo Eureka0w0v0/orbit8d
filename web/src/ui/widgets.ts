@@ -2,7 +2,7 @@
 
 import type { ListenMode } from "../audio/engine";
 import { LANGS, LANG_NAMES, T, lang, type Lang } from "../i18n";
-import type { ExportFormat, ProjectSummary } from "../types";
+import type { ExportFormat, Loudness, ProjectSummary } from "../types";
 import { fmt, h } from "./dom";
 import { FORMAT_LABEL, PROJECT_STATE_LABEL, TEXT } from "./labels";
 
@@ -10,6 +10,7 @@ const METER_RANGE_DB = 60;
 const ACCEPT = "audio/*,.mp3,.m4a,.aac,.flac,.wav,.aiff,.aif,.ogg,.opus";
 const DELETE_ARM_MS = 3000; // 删除要在 3 秒内连按两次
 const MB = 1024 * 1024;
+const LOUDNESS: readonly Loudness[] = ["loud", "standard"];
 
 export interface SongActions {
   open: (id: string) => void;
@@ -226,18 +227,27 @@ export class ExportDialog {
     this.el.addEventListener("click", (e) => e.target === this.el && this.close());
   }
 
-  open(formats: ExportFormat[], start: (format: ExportFormat) => void): void {
+  open(formats: ExportFormat[], start: (format: ExportFormat, loudness: Loudness) => void): void {
     this.el.classList.remove("hidden");
     let chosen: ExportFormat = formats.includes("m4a") ? "m4a" : formats[0];
+    let loudness: Loudness = "loud";
     const list = h("div", { class: "formats" });
     for (const f of formats) {
       const radio = h("input", { type: "radio", name: "fmt", value: f, checked: f === chosen });
       radio.addEventListener("change", () => (chosen = f));
       list.append(h("label", { class: "format" }, radio, h("span", {}, FORMAT_LABEL[f])));
     }
+    const levels = h("div", { class: "formats loudness" }, h("div", { class: "dialog-label" }, TEXT.loudness));
+    const labels: Record<Loudness, string> = { loud: TEXT.loudnessLoud, standard: TEXT.loudnessStandard };
+    for (const level of LOUDNESS) {
+      const radio = h("input", { type: "radio", name: "loudness", value: level, checked: level === loudness });
+      radio.addEventListener("change", () => (loudness = level));
+      levels.append(h("label", { class: "format" }, radio, h("span", {}, labels[level])));
+    }
     this.body.replaceChildren(
       list,
-      h("div", { class: "actions" }, h("button", { type: "button", class: "ghost", onclick: () => this.close() }, TEXT.close), h("button", { type: "button", class: "primary", onclick: () => start(chosen) }, TEXT.exportStart)),
+      levels,
+      h("div", { class: "actions" }, h("button", { type: "button", class: "ghost", onclick: () => this.close() }, TEXT.close), h("button", { type: "button", class: "primary", onclick: () => start(chosen, loudness) }, TEXT.exportStart)),
     );
   }
 

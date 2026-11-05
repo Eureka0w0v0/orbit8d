@@ -101,6 +101,7 @@ export interface Analysis {
 export type ProjectState = "UPLOADED" | "DECODING" | "SEPARATING" | "ANALYZING" | "READY" | "FAILED";
 export type ExportState = "QUEUED" | "RENDERING" | "ENCODING" | "DONE" | "FAILED";
 export type ExportFormat = "m4a" | "mp3" | "flac" | "wav" | "ogg";
+export type Loudness = "loud" | "standard"; // 导出响度：响亮（与试听一致）/ 标准 -14 LUFS
 
 export interface ApiErrorBody {
   code: string;
@@ -145,6 +146,7 @@ export interface ExportRecord {
   project_id: string;
   state: ExportState;
   format: ExportFormat;
+  loudness: Loudness;
   progress: number;
   error: ApiErrorBody | null;
   file_name: string;

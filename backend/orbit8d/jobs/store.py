@@ -62,6 +62,7 @@ class ExportRecord:
     state: ExportState
     format: str
     scene: dict
+    loudness: str = "loud"  # 导出响度（master.LOUDNESS_TARGETS 的键）；旧记录没有这一项，按“响亮”
     progress: float = 0.0
     error: dict | None = None
     file_name: str = ""

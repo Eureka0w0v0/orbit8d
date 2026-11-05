@@ -66,6 +66,7 @@ class ExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scene: Scene
     format: Literal["m4a", "mp3", "flac", "wav", "ogg"]
+    loudness: Literal["loud", "standard"] = "loud"  # 响亮（与试听一致）/ 标准（-14 LUFS）
 
 
 class SceneRequest(BaseModel):
@@ -373,7 +374,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
             raise ApiError(409, "PROJECT_NOT_READY", "Still processing")
         if body.format not in available_formats():
             raise ApiError(422, "UNSUPPORTED_FORMAT", f"The local ffmpeg cannot encode {body.format}")
-        key = f"v{RENDER_VERSION}|{pid}|{canonical_json(body.scene)}|{body.format}"
+        key = f"v{RENDER_VERSION}|{pid}|{canonical_json(body.scene)}|{body.format}|{body.loudness}"
         eid = hashlib.sha256(key.encode()).hexdigest()[:ID_LEN]
         rec, created = store.create_export_if_absent(
             ExportRecord(
@@ -382,6 +383,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
                 state=ExportState.QUEUED,
                 format=body.format,
                 scene=body.scene.model_dump(mode="json"),
+                loudness=body.loudness,
             )
         )
         if not created and rec.state is ExportState.FAILED:

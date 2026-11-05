@@ -31,7 +31,7 @@ import { loadHead } from "./scene/head";
 import { visualRadius } from "./scene/mapping";
 import { OrbitView } from "./scene/orbits";
 import { Stage } from "./scene/stage";
-import type { EventKind, ExportFormat, Mix, Orbit, Project, ProjectSummary, Room, RoomName, Scene, Speed, TrackName } from "./types";
+import type { EventKind, ExportFormat, Loudness, Mix, Orbit, Project, ProjectSummary, Room, RoomName, Scene, Speed, TrackName } from "./types";
 import { TRACKS } from "./types";
 import { h } from "./ui/dom";
 import { EXPORT_STATE_LABEL, PROJECT_STATE_LABEL, TEXT } from "./ui/labels";
@@ -763,14 +763,14 @@ export class App {
       this.toast(TEXT.importFirst);
       return;
     }
-    this.exportDialog.open(this.formats, (fmt) => void this.runExport(fmt));
+    this.exportDialog.open(this.formats, (fmt, loudness) => void this.runExport(fmt, loudness));
   }
 
-  private async runExport(format: ExportFormat): Promise<void> {
+  private async runExport(format: ExportFormat, loudness: Loudness): Promise<void> {
     if (!this.project || !this.scene) return;
     try {
       this.exportDialog.progress(EXPORT_STATE_LABEL.QUEUED);
-      const created = await api.createExport(this.project.id, this.scene, format);
+      const created = await api.createExport(this.project.id, this.scene, format, loudness);
       const rec = await poll(
         () => api.exportRecord(created.id),
         (r) => r.state === "DONE" || r.state === "FAILED",

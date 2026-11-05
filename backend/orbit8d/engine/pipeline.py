@@ -25,6 +25,7 @@ from orbit8d.engine.chunks import (
 )
 from orbit8d.engine.hrtf import HrtfGrid, interpolate
 from orbit8d.engine.master import (
+    LOUDNESS_TARGETS,
     LoudnessMeter,
     design_eq,
     diffuse_gain_db,
@@ -89,7 +90,7 @@ SPECTRA_KEYS = (
 CALIBRATION_KEYS = (*TRACKS, "sub")
 REFERENCE_PRESET = "classic"
 ANALYSIS_VERSION = 3  # 分析结果的内容变了就加一：旧项目启动时自动重新分析（不重新分轨）
-RENDER_VERSION = 3  # 渲染算法变了就加一：同一场景的旧导出不再复用（v3：导出读试听文件、分段渲染）
+RENDER_VERSION = 3  # 渲染算法变了就加一：同一场景的旧导出不再复用（v3：导出读试听文件、分段渲染、响度可选）
 ORIGINAL_MATCH_LIMIT_DB = 24.0
 EPS = 1e-12
 
@@ -387,7 +388,7 @@ class Renderer:
         return mix
 
     def export_chunks(
-        self, chunks: Iterable[np.ndarray], n: int, scene: Scene, analysis: Analysis
+        self, chunks: Iterable[np.ndarray], n: int, scene: Scene, analysis: Analysis, loudness: str = "loud"
     ) -> Iterator[np.ndarray]:
         """导出：整曲混音 → 测 30 ms 片段峰值与响度 → 总增益 → 逐段前视限幅，按顺序给出 (L, 2)。"""
         mix = self.mix_from_chunks(chunks, n, scene, analysis)
@@ -395,7 +396,7 @@ class Renderer:
         def window(a: int, b: int) -> np.ndarray:
             return mix[a:b].astype(np.float64)
 
-        gain = gain_for(measure(window, n, self.sr))
+        gain = gain_for(measure(window, n, self.sr), LOUDNESS_TARGETS[loudness])
         for out, _ in limited(window, n, self.sr, gain):
             yield out
 
@@ -429,8 +430,8 @@ class Renderer:
     def render_mix(self, src: Sources, scene: Scene, analysis: Analysis) -> np.ndarray:
         return self.mix_from_chunks(src.chunks(), src.n, scene, analysis)
 
-    def export(self, src: Sources, scene: Scene, analysis: Analysis) -> np.ndarray:
-        return np.concatenate(list(self.export_chunks(src.chunks(), src.n, scene, analysis)))
+    def export(self, src: Sources, scene: Scene, analysis: Analysis, loudness: str = "loud") -> np.ndarray:
+        return np.concatenate(list(self.export_chunks(src.chunks(), src.n, scene, analysis, loudness)))
 
     # ---- 校准 ----
     def calibrate(

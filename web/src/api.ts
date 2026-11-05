@@ -1,6 +1,6 @@
 // 后端 HTTP 接口（docs/SPEC.md §7）。所有失败都抛 ApiError，调用方负责给用户看得懂的提示。
 
-import type { ApiErrorBody, Bars, ExportFormat, ExportRecord, Project, ProjectSummary, RoomName, Scene } from "./types";
+import type { ApiErrorBody, Bars, ExportFormat, ExportRecord, Loudness, Project, ProjectSummary, RoomName, Scene } from "./types";
 
 export class ApiError extends Error {
   readonly code: string;
@@ -88,11 +88,11 @@ export const api = {
   exportRecord: (id: string) => getJson<ExportRecord>(`/api/exports/${id}`),
   exportUrl: (id: string) => `/api/exports/${id}/file`,
 
-  async createExport(projectId: string, scene: Scene, format: ExportFormat): Promise<ExportRecord> {
+  async createExport(projectId: string, scene: Scene, format: ExportFormat, loudness: Loudness): Promise<ExportRecord> {
     const resp = await fetch(`/api/projects/${projectId}/exports`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scene, format }),
+      body: JSON.stringify({ scene, format, loudness }),
     });
     return (await (await check(resp)).json()) as ExportRecord;
   },

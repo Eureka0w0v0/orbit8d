@@ -139,3 +139,20 @@ def test_master_gain_is_capped_by_target_loudness():
     g_quiet = master_gain(tone, SR)
     g_loud = master_gain(tone * 10, SR)
     assert g_quiet == pytest.approx(10 * g_loud, rel=1e-3)  # 由目标响度决定，与电平成反比
+
+
+def test_gain_follows_the_chosen_loudness_target_unless_peaks_cap_it():
+    from orbit8d.engine.master import LOUDNESS_TARGETS, MasterStats, gain_for
+
+    quiet = MasterStats(
+        block_peaks=np.full(100, 0.05), loudness=-30.0
+    )  # 波峰很低（峰值允许 +26 dB）：响度说了算
+    assert 20 * np.log10(gain_for(quiet, LOUDNESS_TARGETS["standard"])) == pytest.approx(16.0)
+    assert 20 * np.log10(gain_for(quiet, LOUDNESS_TARGETS["loud"])) == pytest.approx(21.0)
+    peaky = MasterStats(block_peaks=np.full(100, 0.9), loudness=-30.0)  # 波峰高：两个目标都被峰值卡住
+    assert gain_for(peaky, LOUDNESS_TARGETS["loud"]) == pytest.approx(
+        gain_for(peaky, LOUDNESS_TARGETS["standard"])
+    )
+    assert gain_for(MasterStats(np.full(100, 0.5), float("-inf"))) == pytest.approx(
+        2.0
+    )  # 测不出响度：只看峰值

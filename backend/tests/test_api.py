@@ -529,6 +529,35 @@ def test_interrupted_export_gets_its_own_error_code(client, ready_project, data_
     assert body["state"] == "FAILED" and body["error"]["code"] == "EXPORT_INTERRUPTED"
 
 
+def test_export_loudness_option(client, tmp_path):
+    """标准响度导出到 -14 LUFS，比默认的“响亮”小声约 5 dB；两个选项是不同的导出（各自幂等）。
+    用波峰平缓的和弦当歌：两个目标都不会先被峰值限制卡住。"""
+    from orbit8d.engine.master import integrated_loudness
+
+    t = np.arange(int(8.0 * 44100)) / 44100
+    chord = sum(0.04 * np.sin(2 * np.pi * f * t) for f in (220.0, 277.2, 329.6, 440.0))
+    song = tmp_path / "chord.wav"
+    sf.write(
+        song, np.stack([chord, chord], axis=1) * (0.8 + 0.2 * np.sin(2 * np.pi * 0.25 * t))[:, None], 44100
+    )
+    pid = upload(client, song).json()["id"]
+    wait_idle(client)
+    levels = {}
+    for loudness in ("loud", "standard"):
+        payload = {"scene": Scene().model_dump(mode="json"), "format": "wav", "loudness": loudness}
+        first = client.post(f"/api/projects/{pid}/exports", json=payload)
+        assert client.post(f"/api/projects/{pid}/exports", json=payload).json()["id"] == first.json()["id"]
+        wait_idle(client)
+        y, sr = sf.read(
+            io.BytesIO(client.get(f"/api/exports/{first.json()['id']}/file").content), always_2d=True
+        )
+        levels[loudness] = integrated_loudness(y, sr)
+    assert levels["standard"] == pytest.approx(-14.0, abs=0.3)
+    assert levels["loud"] == pytest.approx(-9.0, abs=0.3)
+    bad = {"scene": Scene().model_dump(mode="json"), "format": "wav", "loudness": "deafening"}
+    assert client.post(f"/api/projects/{pid}/exports", json=bad).status_code == 422
+
+
 def test_rechoreograph_endpoint_uses_the_posted_sections(client, ready_project):
     url = f"/api/projects/{ready_project}/choreography"
     scene = Scene.model_validate(client.get(url).json())

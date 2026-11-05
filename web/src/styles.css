@@ -721,6 +721,11 @@ button.song-delete.armed {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
   z-index: 25;
 }
+.dialog-label {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
 
 /* 导出对话框 */
 .modal {

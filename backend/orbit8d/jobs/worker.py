@@ -315,7 +315,7 @@ class JobRunner:
         pdir, edir = store.project_dir(project.id), store.export_dir(eid)
         n, chunks = self._preview_chunks(pdir, project.preview_scale)
         mastered = self._renderer.export_chunks(
-            chunks, n, Scene.model_validate(rec.scene), Analysis(**project.analysis)
+            chunks, n, Scene.model_validate(rec.scene), Analysis(**project.analysis), rec.loudness
         )
         render_path = edir / RENDER_FILE
         write_audio(render_path, mastered, 2, SAMPLE_RATE, "FLOAT")
