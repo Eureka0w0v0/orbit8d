@@ -81,6 +81,30 @@ def test_duplicate_upload_reuses_project(client, ready_project, tmp_path):
     assert client.separator.calls == 1
 
 
+def test_failed_song_imported_again_is_retried_until_ready(client, tmp_path, monkeypatch):
+    """第一次分轨前下载模型失败（界面提示“检查网络后重新导入”）：再导入同一个文件会重试，
+    工位空闲时一路走到就绪（SPEC §6：FAILED → DECODING），旧的错误清掉。"""
+    from orbit8d.separate.model import ModelDownloadError
+
+    def offline(on_progress):
+        raise ModelDownloadError("simulated network failure")
+
+    song = write_song(tmp_path / "song.wav")
+    with monkeypatch.context() as m:
+        m.setattr(client.separator, "ensure_model", offline)
+        first = upload(client, song)
+        assert first.status_code == 202
+        wait_idle(client)
+    pid = first.json()["id"]
+    failed = client.get(f"/api/projects/{pid}").json()
+    assert failed["state"] == "FAILED" and failed["error"]["code"] == "MODEL_DOWNLOAD_FAILED"
+    again = upload(client, song)
+    assert again.status_code == 200 and again.json()["id"] == pid
+    wait_idle(client)
+    body = client.get(f"/api/projects/{pid}").json()
+    assert body["state"] == "READY" and body["error"] is None and client.separator.calls == 1
+
+
 def test_non_audio_upload_is_rejected_without_leftovers(client, data_dir, tmp_path):
     bad = tmp_path / "evil.mp3"
     bad.write_text("not audio at all")
