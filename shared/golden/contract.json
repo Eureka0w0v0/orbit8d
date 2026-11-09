@@ -1,0 +1,474 @@
+{
+ "version": 1,
+ "tracks": [
+  "vocals",
+  "drums",
+  "bass",
+  "other"
+ ],
+ "shapes": [
+  "circle",
+  "ellipse",
+  "pendulum",
+  "figure8",
+  "spiral",
+  "fixed"
+ ],
+ "rooms": [
+  "room",
+  "hall",
+  "church"
+ ],
+ "bar_choices": [
+  1,
+  2,
+  4,
+  8
+ ],
+ "export_formats": [
+  "m4a",
+  "mp3",
+  "flac",
+  "wav",
+  "ogg"
+ ],
+ "loudness": [
+  "loud",
+  "standard"
+ ],
+ "project_states": [
+  "UPLOADED",
+  "DECODING",
+  "SEPARATING",
+  "ANALYZING",
+  "READY",
+  "FAILED"
+ ],
+ "export_states": [
+  "QUEUED",
+  "RENDERING",
+  "ENCODING",
+  "DONE",
+  "FAILED"
+ ],
+ "project_steps": [
+  "model_download"
+ ],
+ "source_channels": [
+  "vocals_hi",
+  "bass_hi",
+  "drums_hi_L",
+  "drums_hi_R",
+  "other_hi_L",
+  "other_hi_R",
+  "bass_sub",
+  "drums_sub",
+  "other_sub"
+ ],
+ "preview_files": {
+  "vocals_hi": [
+   0
+  ],
+  "bass_hi": [
+   1
+  ],
+  "drums_hi": [
+   2,
+   3
+  ],
+  "other_hi": [
+   4,
+   5
+  ],
+  "bass_sub": [
+   6
+  ],
+  "drums_sub": [
+   7
+  ],
+  "other_sub": [
+   8
+  ]
+ },
+ "original_preview": "original",
+ "sample_rate": 44100,
+ "hold_ramp_s": 0.5,
+ "layer_heights": {
+  "surround": 0.0,
+  "height": 35.0,
+  "top": 75.0
+ },
+ "limits": {
+  "max_sections": 16,
+  "max_events": 64,
+  "max_label": 16,
+  "distance_m": [
+   0.5,
+   4.0
+  ]
+ },
+ "error_codes": [
+  "ASSET_DOWNLOAD_FAILED",
+  "BAD_BARS",
+  "DECODE_FAILED",
+  "DECODE_FAILED_TIMEOUT",
+  "EMPTY",
+  "ENCODE_FAILED",
+  "ENCODE_FAILED_TIMEOUT",
+  "EXPORT_INTERRUPTED",
+  "EXPORT_NOT_READY",
+  "FFMPEG_MISSING",
+  "FFMPEG_MISSING_TIMEOUT",
+  "FORBIDDEN_ORIGIN",
+  "INTERNAL",
+  "INTERRUPTED",
+  "INVALID_SCENE",
+  "MODEL_DOWNLOAD_FAILED",
+  "NOT_FOUND",
+  "NO_AUDIO",
+  "NO_SAVED_SCENE",
+  "PROBE_FAILED",
+  "PROBE_FAILED_TIMEOUT",
+  "PROJECT_BUSY",
+  "PROJECT_NOT_READY",
+  "SEPARATION_FAILED",
+  "STATE_CONFLICT",
+  "TOO_LARGE",
+  "TOO_LONG",
+  "UNSUPPORTED_CODEC",
+  "UNSUPPORTED_FORMAT"
+ ],
+ "scene_schema": {
+  "$defs": {
+   "Event": {
+    "additionalProperties": false,
+    "properties": {
+     "t_s": {
+      "maximum": 3600.0,
+      "minimum": 0.0,
+      "title": "T S",
+      "type": "number"
+     },
+     "kind": {
+      "enum": [
+       "hold",
+       "overhead"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "duration_s": {
+      "maximum": 30.0,
+      "minimum": 0.5,
+      "title": "Duration S",
+      "type": "number"
+     },
+     "targets": {
+      "items": {
+       "enum": [
+        "vocals",
+        "drums",
+        "bass",
+        "other"
+       ],
+       "type": "string"
+      },
+      "maxItems": 4,
+      "minItems": 1,
+      "title": "Targets",
+      "type": "array"
+     }
+    },
+    "required": [
+     "t_s",
+     "kind",
+     "duration_s",
+     "targets"
+    ],
+    "title": "Event",
+    "type": "object"
+   },
+   "Mix": {
+    "additionalProperties": false,
+    "description": "全曲共用的混音设置（不随分段变化）。",
+    "properties": {
+     "gain_db": {
+      "default": 0.0,
+      "maximum": 12.0,
+      "minimum": -24.0,
+      "title": "Gain Db",
+      "type": "number"
+     },
+     "width_deg": {
+      "default": 0.0,
+      "maximum": 90.0,
+      "minimum": 0.0,
+      "title": "Width Deg",
+      "type": "number"
+     },
+     "reverb_send": {
+      "default": 1.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Reverb Send",
+      "type": "number"
+     },
+     "mute": {
+      "default": false,
+      "title": "Mute",
+      "type": "boolean"
+     },
+     "solo": {
+      "default": false,
+      "title": "Solo",
+      "type": "boolean"
+     }
+    },
+    "title": "Mix",
+    "type": "object"
+   },
+   "Orbit": {
+    "additionalProperties": false,
+    "properties": {
+     "shape": {
+      "default": "circle",
+      "enum": [
+       "circle",
+       "ellipse",
+       "pendulum",
+       "figure8",
+       "spiral",
+       "fixed"
+      ],
+      "title": "Shape",
+      "type": "string"
+     },
+     "radius_m": {
+      "default": 1.2,
+      "maximum": 4.0,
+      "minimum": 0.5,
+      "title": "Radius M",
+      "type": "number"
+     },
+     "speed": {
+      "$ref": "#/$defs/Speed"
+     },
+     "direction": {
+      "default": "cw",
+      "enum": [
+       "cw",
+       "ccw"
+      ],
+      "title": "Direction",
+      "type": "string"
+     },
+     "start_deg": {
+      "default": 0.0,
+      "maximum": 360.0,
+      "minimum": -360.0,
+      "title": "Start Deg",
+      "type": "number"
+     },
+     "height_deg": {
+      "default": 0.0,
+      "maximum": 90.0,
+      "minimum": -60.0,
+      "title": "Height Deg",
+      "type": "number"
+     },
+     "pitch_deg": {
+      "default": 0.0,
+      "maximum": 90.0,
+      "minimum": -90.0,
+      "title": "Pitch Deg",
+      "type": "number"
+     },
+     "roll_deg": {
+      "default": 0.0,
+      "maximum": 90.0,
+      "minimum": -90.0,
+      "title": "Roll Deg",
+      "type": "number"
+     },
+     "yaw_deg": {
+      "default": 0.0,
+      "maximum": 180.0,
+      "minimum": -180.0,
+      "title": "Yaw Deg",
+      "type": "number"
+     },
+     "aspect": {
+      "default": 0.6,
+      "maximum": 1.0,
+      "minimum": 0.3,
+      "title": "Aspect",
+      "type": "number"
+     },
+     "swing_deg": {
+      "default": 120.0,
+      "maximum": 180.0,
+      "minimum": 10.0,
+      "title": "Swing Deg",
+      "type": "number"
+     },
+     "lift_deg": {
+      "default": 30.0,
+      "maximum": 60.0,
+      "minimum": 0.0,
+      "title": "Lift Deg",
+      "type": "number"
+     }
+    },
+    "title": "Orbit",
+    "type": "object"
+   },
+   "Room": {
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "default": "hall",
+      "enum": [
+       "room",
+       "hall",
+       "church"
+      ],
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "title": "Room",
+    "type": "object"
+   },
+   "Section": {
+    "additionalProperties": false,
+    "properties": {
+     "start_s": {
+      "default": 0.0,
+      "maximum": 3600.0,
+      "minimum": 0.0,
+      "title": "Start S",
+      "type": "number"
+     },
+     "label": {
+      "default": "全曲",
+      "maxLength": 16,
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+     },
+     "orbits": {
+      "additionalProperties": {
+       "$ref": "#/$defs/Orbit"
+      },
+      "propertyNames": {
+       "enum": [
+        "vocals",
+        "drums",
+        "bass",
+        "other"
+       ]
+      },
+      "title": "Orbits",
+      "type": "object"
+     },
+     "wet_db": {
+      "default": -12.0,
+      "maximum": 0.0,
+      "minimum": -24.0,
+      "title": "Wet Db",
+      "type": "number"
+     }
+    },
+    "title": "Section",
+    "type": "object"
+   },
+   "Speed": {
+    "additionalProperties": false,
+    "properties": {
+     "mode": {
+      "default": "bars",
+      "enum": [
+       "bars",
+       "seconds"
+      ],
+      "title": "Mode",
+      "type": "string"
+     },
+     "bars": {
+      "default": 4,
+      "enum": [
+       1,
+       2,
+       4,
+       8
+      ],
+      "title": "Bars",
+      "type": "integer"
+     },
+     "seconds": {
+      "default": 7.0,
+      "maximum": 30.0,
+      "minimum": 2.0,
+      "title": "Seconds",
+      "type": "number"
+     }
+    },
+    "title": "Speed",
+    "type": "object"
+   }
+  },
+  "additionalProperties": false,
+  "properties": {
+   "version": {
+    "const": 2,
+    "default": 2,
+    "title": "Version",
+    "type": "integer"
+   },
+   "mix": {
+    "additionalProperties": {
+     "$ref": "#/$defs/Mix"
+    },
+    "propertyNames": {
+     "enum": [
+      "vocals",
+      "drums",
+      "bass",
+      "other"
+     ]
+    },
+    "title": "Mix",
+    "type": "object"
+   },
+   "sections": {
+    "items": {
+     "$ref": "#/$defs/Section"
+    },
+    "maxItems": 16,
+    "minItems": 1,
+    "title": "Sections",
+    "type": "array"
+   },
+   "events": {
+    "items": {
+     "$ref": "#/$defs/Event"
+    },
+    "maxItems": 64,
+    "title": "Events",
+    "type": "array"
+   },
+   "room": {
+    "$ref": "#/$defs/Room"
+   },
+   "rear_darken_db": {
+    "default": 6.0,
+    "maximum": 12.0,
+    "minimum": 0.0,
+    "title": "Rear Darken Db",
+    "type": "number"
+   }
+  },
+  "title": "Scene",
+  "type": "object"
+ }
+}

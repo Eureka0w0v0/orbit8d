@@ -2,19 +2,43 @@
 
 输出到仓库根目录 shared/golden/。Python 实现是基准，TS 实现必须与之逐点一致。
 改动算法后需要重新生成并在提交说明里写明原因。
+contract.json 是前后端共享的枚举、布局、上限与错误码（后端常量的快照，TS 常量与 i18n 必须与之一致）：
+改了这些常量同样要重新生成，并在提交说明里写明前端要跟着改什么。
 """
 
+import ast
 import json
+import re
 from pathlib import Path
 
 import numpy as np
 from pydantic import ValidationError
 
+from orbit8d.config import SAMPLE_RATE
 from orbit8d.engine.hrtf import HrtfGrid, to_bytes
+from orbit8d.engine.master import LOUDNESS_TARGETS
 from orbit8d.engine.orbit import SHAPES, OrbitParams, orbit_position
-from orbit8d.engine.pipeline import SOURCE_CHANNELS, Renderer, Sources
-from orbit8d.engine.scene import TRACKS, Event, Orbit, Scene, Section, Speed
+from orbit8d.engine.pipeline import PREVIEW_FILES, SOURCE_CHANNELS, Renderer, Sources
+from orbit8d.engine.render import MAX_DISTANCE_M, MIN_DISTANCE_M
+from orbit8d.engine.reverb import ROOMS
+from orbit8d.engine.scene import (
+    HOLD_RAMP_S,
+    LAYER_HEIGHTS,
+    MAX_EVENTS,
+    MAX_LABEL,
+    MAX_SECTIONS,
+    TRACKS,
+    Event,
+    Orbit,
+    Scene,
+    Section,
+    Speed,
+)
+from orbit8d.engine.tempo import TURN_BAR_CHOICES
 from orbit8d.engine.timeline import compile_track, track_position, wet_db_curve
+from orbit8d.jobs.states import ExportState, ProjectState
+from orbit8d.jobs.worker import ORIGINAL_PREVIEW, STEP_MODEL_DOWNLOAD
+from orbit8d.media.ffmpeg import OUTPUT_FORMATS
 
 GOLDEN_DIR = Path(__file__).resolve().parents[2] / "shared" / "golden"
 ORBIT_FILE = GOLDEN_DIR / "orbit_vectors.json"
@@ -39,6 +63,23 @@ INPUT_CHANNELS = SOURCE_CHANNELS  # vocals_hi, bass_hi, drums_hi_L/R, other_hi_L
 RENDER_BPM_NORM = 97.5
 RENDER_T_REF = 0.05
 RENDER_CALIBRATION = {"vocals": 1.1, "drums": 0.6, "bass": 0.9, "other": 0.7, "sub": 0.85}
+
+# 前后端契约（web/src/contract.test.ts 对照 TS 常量、类型与 i18n 的错误提示）
+CONTRACT_FILE = GOLDEN_DIR / "contract.json"
+PACKAGE_DIR = Path(__file__).resolve().parents[1] / "orbit8d"
+# 错误码还没有统一的登记处，散在各模块的字面量里，所以从源码收集。认得的写法（出现新写法要补进来）：
+# 字典 {"code": "X", ...}，以及下表这些调用的第 n 个位置参数（字面量，或模块级的字符串常量）
+CODE_ARGS = {
+    "ApiError": 1,  # ApiError(409, "PROJECT_BUSY", message)
+    "MediaError": 0,  # MediaError("NO_AUDIO", message)
+    "super().__init__": 0,  # CodedError 的子类：super().__init__("SEPARATION_FAILED", message)
+    "fail": 1,  # 任务失败：fail(job.id, "INTERNAL", message)
+    "fail_project": 1,  # store.fail_project(pid, PROJECT_INTERRUPTED, message)
+    "fail_export": 1,
+    "_run": 2,  # ffmpeg 子进程：_run(args, timeout, "DECODE_FAILED")，超时报 <code>_TIMEOUT
+}
+TIMEOUT_SUFFIX = "_TIMEOUT"
+CODE_PATTERN = re.compile(r"[A-Z][A-Z0-9_]*")
 
 
 def orbit_cases(seed: int = SEED) -> list[dict]:
@@ -282,6 +323,94 @@ def render_case(seed: int = SEED) -> tuple[dict, np.ndarray, HrtfGrid]:
     return case, data, grid
 
 
+def _call_name(call: ast.Call) -> str:
+    func = call.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if not isinstance(func, ast.Attribute):
+        return ""
+    inner = func.value
+    if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name) and inner.func.id == "super":
+        return f"super().{func.attr}"
+    return func.attr
+
+
+def _module_constants(tree: ast.Module) -> dict[str, object]:
+    """模块级的 NAME = 常量（错误码有时先放进常量，如 store.PROJECT_INTERRUPTED）。"""
+    return {
+        target.id: node.value.value
+        for node in tree.body
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+
+
+def _code(node: ast.expr, constants: dict[str, object]) -> str | None:
+    value = node.value if isinstance(node, ast.Constant) else constants.get(getattr(node, "id", ""))
+    return value if isinstance(value, str) and CODE_PATTERN.fullmatch(value) else None
+
+
+def _codes_at(node: ast.AST, constants: dict[str, object]) -> set[str]:
+    """一个语法节点上写着的错误码（CODE_ARGS 说明了认得哪些写法）。"""
+    if isinstance(node, ast.Dict):
+        pairs = zip(node.keys, node.values, strict=True)
+        values = [v for k, v in pairs if isinstance(k, ast.Constant) and k.value == "code"]
+        return {c for v in values if (c := _code(v, constants))}
+    if not isinstance(node, ast.Call):
+        return set()
+    name = _call_name(node)
+    pos = CODE_ARGS.get(name)
+    if pos is None or pos >= len(node.args) or not (code := _code(node.args[pos], constants)):
+        return set()
+    return {code, code + TIMEOUT_SUFFIX} if name == "_run" else {code}
+
+
+def error_codes() -> list[str]:
+    """后端会返回、或写进项目 / 导出记录的全部错误码，排好序。"""
+    codes: set[str] = set()
+    for path in sorted(PACKAGE_DIR.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        constants = _module_constants(tree)
+        for node in ast.walk(tree):
+            codes |= _codes_at(node, constants)
+    return sorted(codes)
+
+
+def contract() -> dict:
+    """前后端共享的枚举、布局、上限与错误码。scene_schema 就是 GET /api/scene/schema 返回的那一份。"""
+    return {
+        "version": 1,
+        "tracks": list(TRACKS),
+        "shapes": list(SHAPES),
+        "rooms": list(ROOMS),
+        "bar_choices": list(TURN_BAR_CHOICES),
+        "export_formats": list(OUTPUT_FORMATS),
+        "loudness": list(LOUDNESS_TARGETS),
+        "project_states": [str(s) for s in ProjectState],
+        "export_states": [str(s) for s in ExportState],
+        "project_steps": [STEP_MODEL_DOWNLOAD],  # 项目记录的 step；空字符串 = 没有子步骤
+        "source_channels": list(SOURCE_CHANNELS),
+        "preview_files": {name: list(channels) for name, channels in PREVIEW_FILES.items()},
+        "original_preview": ORIGINAL_PREVIEW,
+        "sample_rate": SAMPLE_RATE,
+        "hold_ramp_s": HOLD_RAMP_S,
+        "layer_heights": LAYER_HEIGHTS,
+        "limits": {
+            "max_sections": MAX_SECTIONS,
+            "max_events": MAX_EVENTS,
+            "max_label": MAX_LABEL,
+            "distance_m": [MIN_DISTANCE_M, MAX_DISTANCE_M],  # 渲染时距离增益的钳位
+        },
+        "error_codes": error_codes(),
+        "scene_schema": Scene.model_json_schema(),
+    }
+
+
+def contract_json() -> str:
+    return json.dumps(contract(), indent=1, ensure_ascii=False) + "\n"
+
+
 def main() -> None:
     GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
     ORBIT_FILE.write_text(json.dumps({"version": 1, "cases": orbit_cases()}, indent=1) + "\n")
@@ -290,7 +419,9 @@ def main() -> None:
     RENDER_CASE_FILE.write_text(json.dumps(case, indent=1) + "\n")
     RENDER_DATA_FILE.write_bytes(data.tobytes())
     RENDER_GRID_FILE.write_bytes(to_bytes(grid))
+    CONTRACT_FILE.write_text(contract_json(), encoding="utf-8")
     print(f"wrote {ORBIT_FILE}, {TIMELINE_FILE}, {RENDER_CASE_FILE}, {RENDER_DATA_FILE}, {RENDER_GRID_FILE}")
+    print(f"wrote {CONTRACT_FILE}")
 
 
 if __name__ == "__main__":
