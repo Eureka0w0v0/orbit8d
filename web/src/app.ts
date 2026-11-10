@@ -3,7 +3,7 @@
 import { ApiError, api, poll } from "./api";
 import { T, errorText, lang, switchLang, type Lang } from "./i18n";
 import { AudioEngine, STEM_NAMES, type ListenMode } from "./audio/engine";
-import { buildRenderParams, compileMotions, effectiveTrackGains, type Timing } from "./audio/params";
+import { buildRenderParams, compileMotions, effectiveTrackGains } from "./audio/params";
 import { toOrbitParams, type OrbitParams } from "./orbit/orbit";
 import { phaseAt, type TrackMotion } from "./orbit/timeline";
 import { Dome } from "./scene/dome";
@@ -12,7 +12,6 @@ import {
   MAX_SECTIONS,
   addEvent,
   applyPreset,
-  barGrid,
   moveBoundary,
   moveEvent,
   removeEvent,
@@ -20,7 +19,6 @@ import {
   resizeEvent,
   sectionIndexAt,
   splitAt,
-  type BarGrid,
   type EditReason,
   type EditResult,
 } from "./scene/edit";
@@ -32,6 +30,7 @@ import { visualRadius } from "./scene/mapping";
 import { OrbitView } from "./scene/orbits";
 import { Stage } from "./scene/stage";
 import { Autosave, type SaveState } from "./session/autosave";
+import { openSong, titleOf, type OpenSong } from "./session/song";
 import type { EventKind, ExportFormat, Loudness, Mix, Orbit, Project, ProjectSummary, Room, RoomName, Scene, Speed, TrackName } from "./types";
 import { TRACKS } from "./types";
 import { h } from "./ui/dom";
@@ -70,11 +69,9 @@ function storage(): Storage | null {
 
 export class App {
   private phase: Phase = "booting";
-  private project: Project | null = null;
+  private song: OpenSong | null = null; // 打开着的歌；scene / motions 与它同时有值
   private scene: Scene | null = null;
   private motions: Record<TrackName, TrackMotion> | null = null;
-  private timing: Timing | null = null;
-  private grid: BarGrid | null = null;
   private selected: TrackName = "vocals";
   private section = 0;
   private formats: ExportFormat[] = [];
@@ -119,7 +116,7 @@ export class App {
     this.undoButton = h("button", { type: "button", class: "ghost icon", title: TEXT.undo, disabled: true, onclick: () => this.undo() }, "↩\uFE0E");
     this.redoButton = h("button", { type: "button", class: "ghost icon", title: TEXT.redo, disabled: true, onclick: () => this.redo() }, "↪\uFE0E");
     this.saveStatus = h("span", { class: "save-status" });
-    this.songMenu = new SongMenu(async () => songList(await api.projects(), this.project?.id ?? null, this.songActions()));
+    this.songMenu = new SongMenu(async () => songList(await api.projects(), this.song?.project.id ?? null, this.songActions()));
     const header = h(
       "header",
       { class: "topbar" },
@@ -143,10 +140,10 @@ export class App {
       scrubStart: (t) => this.scrubStart(t),
       scrub: (t) => this.scrub(t),
       scrubEnd: (t) => void this.scrubEnd(t),
-      moveBoundary: (k, t) => this.editScene((s) => moveBoundary(s, k, t, this.grid!, this.duration)),
+      moveBoundary: (k, t) => this.editScene((s, song) => moveBoundary(s, k, t, song.grid, song.timing.durationS)),
       selectEvent: (index) => this.selectEvent(index),
-      moveEvent: (index, anchor, free) => this.editScene((s) => moveEvent(s, index, anchor, this.grid!, this.duration, free)),
-      resizeEvent: (index, end, free) => this.editScene((s) => resizeEvent(s, index, end, this.grid!, this.duration, free)),
+      moveEvent: (index, anchor, free) => this.editScene((s, song) => moveEvent(s, index, anchor, song.grid, song.timing.durationS, free)),
+      resizeEvent: (index, end, free) => this.editScene((s, song) => resizeEvent(s, index, end, song.grid, song.timing.durationS, free)),
     });
     this.transport = new Transport(() => void this.togglePlay(), this.timeline.el, () => this.toggleListen());
     const badge = h("div", { class: "listen-badge" }, TEXT.listeningOriginal);
@@ -177,7 +174,7 @@ export class App {
         views: this.views,
         selected: () => this.selected,
         params: (t) => this.orbitParams(t),
-        orbit: (t) => this.scene!.sections[this.section].orbits[t],
+        orbit: (t) => this.open.scene.sections[this.section].orbits[t],
         playing: () => this.engine.playing,
         phase: (t) => (this.motions ? phaseAt(this.motions[t], this.engine.time) : 0),
         select: (t) => this.select(t),
@@ -192,7 +189,13 @@ export class App {
   }
 
   private get duration(): number {
-    return this.timing?.durationS ?? 0;
+    return this.song?.timing.durationS ?? 0;
+  }
+
+  /** 打开着的歌与它现在的场景。只在已经有歌的情况下才会被用到（3D 把手、面板）；没有歌时调用是程序错误。 */
+  private get open(): { song: OpenSong; scene: Scene } {
+    if (!this.song || !this.scene) throw new Error("No song is open");
+    return { song: this.song, scene: this.scene };
   }
 
   // ---------- 状态机 ----------
@@ -276,7 +279,7 @@ export class App {
 
   /** 删歌（连同导出）。删的是正在用的歌：没存的改动直接丢掉，回到导入页。 */
   private async deleteSong(song: ProjectSummary): Promise<void> {
-    const current = this.project?.id === song.id;
+    const current = this.song?.project.id === song.id;
     const remove = () => api.deleteProject(song.id);
     try {
       await (current ? this.autosave.discardWhile(remove) : remove());
@@ -296,11 +299,9 @@ export class App {
     this.engine.pause();
     this.songMenu.close();
     this.exportDialog.close();
-    this.project = null;
+    this.song = null;
     this.scene = null;
     this.motions = null;
-    this.timing = null;
-    this.grid = null;
     this.history.clear();
     this.updateUndoButtons();
     this.title.textContent = "";
@@ -344,18 +345,18 @@ export class App {
   }
 
   /** 优先用这首歌上次保存的场景；没保存过用自动编排；万一取不到就退回经典预设。 */
-  private async initialScene(project: Project): Promise<Scene> {
+  private async initialScene(song: OpenSong): Promise<Scene> {
     try {
-      return (await api.savedScene(project.id)) ?? (await api.choreography(project.id));
+      return (await api.savedScene(song.project.id)) ?? (await api.choreography(song.project.id));
     } catch (err) {
       console.warn("[orbit8d] auto choreography unavailable, using the classic preset", err);
-      return api.preset(FALLBACK_PRESET, project.analysis!.default_bars);
+      return api.preset(FALLBACK_PRESET, song.analysis.default_bars);
     }
   }
 
   private async loadProject(project: Project): Promise<void> {
-    const analysis = project.analysis;
-    if (!analysis) throw new Error("The project has no analysis");
+    const next = openSong(project);
+    const { analysis } = next;
     this.go("loading");
     this.overlay.showProgress(TEXT.loadingAudio, null, project.source.filename);
     await this.autosave.flush(); // 换歌前先把上一首没存的改动存掉
@@ -366,10 +367,8 @@ export class App {
     await this.engine.loadStems(Object.fromEntries(buffers));
     await this.engine.loadOriginal(original, analysis.original_gain * project.preview_scale);
     this.setListen("8d");
-    const scene = await this.initialScene(project);
-    this.project = project;
-    this.timing = { bpmNorm: analysis.bpm_norm, tRef: analysis.t_ref, durationS: analysis.duration_s };
-    this.grid = barGrid(analysis.bpm_norm, analysis.t_ref);
+    const scene = await this.initialScene(next);
+    this.song = next;
     this.selected = "vocals";
     this.section = 0;
     this.selectedEvent = null;
@@ -381,9 +380,7 @@ export class App {
     for (const view of this.views.values()) view.group.visible = true;
     this.stage.invalidate();
     this.autosave.opened();
-    this.title.textContent = project.source.title
-      ? `${project.source.artist ? `${project.source.artist} - ` : ""}${project.source.title}`
-      : project.source.filename;
+    this.title.textContent = titleOf(project.source);
     this.transport.setInfo(`${Math.round(analysis.bpm_norm)} BPM`);
     storage()?.setItem(LAST_PROJECT_KEY, project.id);
     this.stage.resetView();
@@ -393,7 +390,8 @@ export class App {
 
   // ---------- 场景 ----------
   private orbitParams(track: TrackName): OrbitParams {
-    return toOrbitParams(this.scene!.sections[this.section].orbits[track], this.timing?.bpmNorm ?? 120);
+    const { song, scene } = this.open;
+    return toOrbitParams(scene.sections[this.section].orbits[track], song.timing.bpmNorm);
   }
 
   private panelActions(): PanelActions {
@@ -409,9 +407,9 @@ export class App {
       autoChoreograph: () => void this.autoChoreograph(),
       setSectionLabel: (label) => inSection((s, k) => (s.sections[k].label = label)),
       setSectionWet: (db) => inSection((s, k) => (s.sections[k].wet_db = db)),
-      splitSection: () => this.tryEdit((s) => splitAt(s, this.engine.time, this.grid!, this.duration)),
+      splitSection: () => this.tryEdit((s, song) => splitAt(s, this.engine.time, song.grid, song.timing.durationS)),
       removeSection: () => this.tryEdit((s) => removeSection(s, this.section)),
-      addEvent: (kind: EventKind) => this.tryEdit((s) => addEvent(s, kind, this.engine.time, this.selected, this.grid!)),
+      addEvent: (kind: EventKind) => this.tryEdit((s, song) => addEvent(s, kind, this.engine.time, this.selected, song.grid)),
       removeEvent: (index) => {
         this.selectedEvent = null;
         this.editScene((s) => removeEvent(s, index));
@@ -439,24 +437,23 @@ export class App {
   }
 
   /** 纯函数编辑：返回同一个对象表示没变。 */
-  private editScene(fn: (s: Scene) => Scene): void {
-    if (!this.scene || !this.grid) return;
-    const next = fn(this.scene);
+  private editScene(fn: (s: Scene, song: OpenSong) => Scene): void {
+    if (!this.scene || !this.song) return;
+    const next = fn(this.scene, this.song);
     if (next !== this.scene) this.applyScene(next);
   }
 
-  private tryEdit(fn: (s: Scene) => EditResult): void {
-    if (!this.scene || !this.grid) return;
-    const r = fn(this.scene);
+  private tryEdit(fn: (s: Scene, song: OpenSong) => EditResult): void {
+    if (!this.scene || !this.song) return;
+    const r = fn(this.scene, this.song);
     if (r.ok) this.applyScene(r.scene);
     else this.toast(editMessage(r.reason));
   }
 
   private async applyPresetToSection(name: string): Promise<void> {
-    const analysis = this.project?.analysis;
-    if (!analysis || !this.scene) return;
+    if (!this.song || !this.scene) return;
     try {
-      const preset = await api.preset(name, analysis.default_bars);
+      const preset = await api.preset(name, this.song.analysis.default_bars);
       const next = applyPreset(this.scene, preset, this.section);
       await this.ensureRoom(next.room.name);
       this.applyScene(next);
@@ -467,9 +464,9 @@ export class App {
 
   /** ✨ 按时间轴上现在的分界与段名重新编排（混音、房间、背后压暗不变）。 */
   private async autoChoreograph(): Promise<void> {
-    if (!this.project || !this.scene) return;
+    if (!this.song || !this.scene) return;
     try {
-      const scene = await api.rechoreograph(this.project.id, this.scene);
+      const scene = await api.rechoreograph(this.song.project.id, this.scene);
       await this.ensureRoom(scene.room.name);
       this.applyScene(scene);
       this.toast(TEXT.autoChoreoDone, "info");
@@ -483,11 +480,11 @@ export class App {
    */
   private applyScene(scene: Scene, opts: { record?: boolean; save?: boolean; refreshEq?: boolean } = {}): void {
     const { record = true, save = true, refreshEq = true } = opts;
-    if (!this.timing) return;
+    if (!this.song) return;
     if (record && this.scene && scene !== this.scene) this.history.record(this.scene, performance.now());
     if (this.selectedEvent !== null && this.selectedEvent >= scene.events.length) this.selectedEvent = null;
     this.scene = scene;
-    this.motions = compileMotions(scene, this.timing);
+    this.motions = compileMotions(scene, this.song.timing);
     this.section = Math.min(sectionIndexAt(scene, this.engine.time), scene.sections.length - 1);
     this.syncViews();
     this.paramsDirty = true;
@@ -528,8 +525,8 @@ export class App {
 
   // ---------- 自动保存（规则在 session/autosave.ts；这里只交出最新的场景、显示状态） ----------
   private scheduleSave(): void {
-    if (!this.project || !this.scene) return;
-    this.autosave.changed({ projectId: this.project.id, scene: this.scene });
+    if (!this.song || !this.scene) return;
+    this.autosave.changed({ projectId: this.song.project.id, scene: this.scene });
   }
 
   private showSaveState(state: SaveState): void {
@@ -583,8 +580,8 @@ export class App {
   /** 3D 轨道形状、面板、时间轴都显示播放头所在的那一段。 */
   private syncViews(): void {
     const scene = this.scene;
-    const analysis = this.project?.analysis;
-    if (!scene || !analysis) return;
+    const song = this.song;
+    if (!scene || !song) return;
     const gains = effectiveTrackGains(scene);
     for (const track of TRACKS) {
       this.views.get(track)?.update({
@@ -598,7 +595,7 @@ export class App {
     const selectedOrbit = scene.sections[this.section].orbits[this.selected];
     this.dome.setRadius(visualRadius(selectedOrbit.radius_m));
     this.dome.setActiveLayer(layerOf(selectedOrbit.height_deg));
-    const ctx: PanelContext = { scene, track: this.selected, section: this.section, analysis, duration: this.duration };
+    const ctx: PanelContext = { scene, track: this.selected, section: this.section, analysis: song.analysis, duration: this.duration };
     this.tracksPanel.sync(ctx);
     this.orbitPanel.sync(ctx);
     this.timeline.setScene(scene, this.duration, this.section, this.selectedEvent);
@@ -612,12 +609,12 @@ export class App {
   }
 
   private async refreshEq(): Promise<void> {
-    const project = this.project;
+    const song = this.song;
     const scene = this.scene;
-    if (!project || !scene) return;
+    if (!song || !scene) return;
     const seq = ++this.eqSeq;
     try {
-      const wav = await api.sceneEq(project.id, scene);
+      const wav = await api.sceneEq(song.project.id, scene);
       if (seq === this.eqSeq) await this.engine.setEq(wav);
     } catch (err) {
       console.warn("[orbit8d] updating the compensation EQ failed, keeping the previous one", err);
@@ -637,12 +634,12 @@ export class App {
 
   // ---------- 每帧：返回 true 表示 3D 画面在动（播放中、拖播放头、播放位置跳了），要重画 ----------
   private tick(): boolean {
-    const analysis = this.project?.analysis;
-    if (!this.scene || !analysis || !this.project || !this.timing || !this.motions) return false;
+    const song = this.song;
+    if (!this.scene || !song || !this.motions) return false;
     if (this.paramsDirty) {
       this.paramsDirty = false;
-      const params = buildRenderParams(this.scene, this.timing, analysis.calibration, this.project.preview_scale);
-      this.engine.setParams(params, analysis.preview_gain);
+      const params = buildRenderParams(this.scene, song.timing, song.analysis.calibration, song.project.preview_scale);
+      this.engine.setParams(params, song.analysis.preview_gain);
     }
     const t = this.scrubTime ?? this.engine.time;
     const k = sectionIndexAt(this.scene, t);
@@ -715,7 +712,7 @@ export class App {
 
   // ---------- 导出 ----------
   private openExport(): void {
-    if (this.phase !== "ready" || !this.project || !this.scene) {
+    if (this.phase !== "ready" || !this.song || !this.scene) {
       this.toast(TEXT.importFirst);
       return;
     }
@@ -723,10 +720,10 @@ export class App {
   }
 
   private async runExport(format: ExportFormat, loudness: Loudness): Promise<void> {
-    if (!this.project || !this.scene) return;
+    if (!this.song || !this.scene) return;
     try {
       this.exportDialog.progress(EXPORT_STATE_LABEL.QUEUED);
-      const created = await api.createExport(this.project.id, this.scene, format, loudness);
+      const created = await api.createExport(this.song.project.id, this.scene, format, loudness);
       const rec = await poll(
         () => api.exportRecord(created.id),
         (r) => r.state === "DONE" || r.state === "FAILED",
