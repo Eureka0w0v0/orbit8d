@@ -31,6 +31,7 @@ import { OrbitView } from "./scene/orbits";
 import { Stage } from "./scene/stage";
 import { Autosave, type SaveState } from "./session/autosave";
 import { EqSync } from "./session/eq-sync";
+import { ExportRun } from "./session/export-run";
 import { openSong, titleOf, type OpenSong } from "./session/song";
 import type { EventKind, ExportFormat, Loudness, Mix, Orbit, Project, ProjectSummary, Room, Scene, Speed, TrackName } from "./types";
 import { TRACKS } from "./types";
@@ -100,6 +101,15 @@ export class App {
     onError: (err) => console.warn("[orbit8d] updating the compensation EQ failed, keeping the previous one", err),
     setTimer: (fn, ms) => window.setTimeout(fn, ms),
     clearTimer: (id) => window.clearTimeout(id),
+  });
+  private readonly exporter = new ExportRun({
+    create: (job) => api.createExport(job.projectId, job.scene, job.format, job.loudness),
+    fetch: (id) => api.exportRecord(id),
+    sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
+    onProgress: (state) => this.exportDialog.progress(EXPORT_STATE_LABEL[state]),
+    onDone: (rec) => this.exportDialog.done(api.exportUrl(rec.id), rec.file_name),
+    onFailed: (rec) => this.exportDialog.error(TEXT.exportFailed(errorText(rec.error?.code ?? "INTERNAL", rec.error?.message ?? ""))),
+    onError: (err) => this.exportDialog.error(describe(err)),
   });
   private stage!: Stage;
   private handles!: Handles;
@@ -692,23 +702,11 @@ export class App {
       this.toast(TEXT.importFirst);
       return;
     }
-    this.exportDialog.open(this.formats, (fmt, loudness) => void this.runExport(fmt, loudness));
+    this.exportDialog.open(this.formats, (format, loudness) => this.runExport(format, loudness));
   }
 
-  private async runExport(format: ExportFormat, loudness: Loudness): Promise<void> {
+  private runExport(format: ExportFormat, loudness: Loudness): void {
     if (!this.song || !this.scene) return;
-    try {
-      this.exportDialog.progress(EXPORT_STATE_LABEL.QUEUED);
-      const created = await api.createExport(this.song.project.id, this.scene, format, loudness);
-      const rec = await poll(
-        () => api.exportRecord(created.id),
-        (r) => r.state === "DONE" || r.state === "FAILED",
-        (r) => this.exportDialog.progress(EXPORT_STATE_LABEL[r.state]),
-      );
-      if (rec.state === "FAILED") this.exportDialog.error(TEXT.exportFailed(errorText(rec.error?.code ?? "INTERNAL", rec.error?.message ?? "")));
-      else this.exportDialog.done(api.exportUrl(rec.id), rec.file_name);
-    } catch (err) {
-      this.exportDialog.error(describe(err));
-    }
+    void this.exporter.start({ projectId: this.song.project.id, scene: this.scene, format, loudness });
   }
 }
