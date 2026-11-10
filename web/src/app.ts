@@ -37,6 +37,7 @@ import { h } from "./ui/dom";
 import { EXPORT_STATE_LABEL, PROJECT_STATE_LABEL, TEXT } from "./ui/labels";
 import { OrbitPanel, TracksPanel, type PanelActions, type PanelContext } from "./ui/panels";
 import { SchemaRanges } from "./ui/schema";
+import { shortcutFor, type Shortcut } from "./ui/shortcuts";
 import { TimelineStrip } from "./ui/timeline";
 import { canGo, type Phase } from "./ui/phase";
 import { BUSY, describe, progressOf } from "./ui/progress";
@@ -53,16 +54,8 @@ const ORIGINAL_PREVIEW = "original";
 const SEEK_STEP_S = 5;
 const DEFAULT_RADIUS_M = 1.2; // 还没打开歌时三层半球按默认轨道距离画（与后端 Orbit.radius_m 默认值一致）
 const STEREO: ReadonlySet<TrackName> = new Set(["drums", "other"]);
-const TEXT_ENTRY = new Set(["TEXTAREA", "SELECT"]);
-const TEXT_INPUT_TYPES = new Set(["text", "search", "number", "email", "password", "url"]);
 
 type SaveState = "saved" | "saving" | "failed";
-
-/** 可以打字的地方不抢快捷键（本应用目前没有文本框，防将来加了以后误触）。 */
-function isTextEntry(el: HTMLElement): boolean {
-  if (TEXT_ENTRY.has(el.tagName) || el.isContentEditable) return true;
-  return el.tagName === "INPUT" && TEXT_INPUT_TYPES.has((el as HTMLInputElement).type);
-}
 
 function editMessage(reason: EditReason): string {
   if (reason === "maxSections") return T.edit.maxSections(MAX_SECTIONS);
@@ -711,38 +704,35 @@ export class App {
   }
 
   private onKey(e: KeyboardEvent): void {
-    const target = e.target as HTMLElement;
-    if (isTextEntry(target)) return;
-    if ((e.metaKey || e.ctrlKey) && (e.code === "KeyZ" || e.code === "KeyY")) {
-      e.preventDefault();
-      if (e.code === "KeyY" || e.shiftKey) this.redo();
-      else this.undo();
-      return;
-    }
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.code === "KeyB") {
-      e.preventDefault();
-      this.toggleListen();
-      return;
-    }
-    if ((e.code === "Delete" || e.code === "Backspace") && this.selectedEvent !== null && this.phase === "ready") {
-      e.preventDefault();
-      const index = this.selectedEvent;
-      this.selectedEvent = null;
-      this.editScene((s) => removeEvent(s, index));
-      return;
-    }
-    if (e.code === "Escape" && this.selectedEvent !== null) {
-      this.selectEvent(null);
-      return;
-    }
-    if (["INPUT", "BUTTON", "SELECT"].includes(target.tagName)) return; // 空格、方向键留给聚焦的控件
-    if (e.code === "Space") {
-      e.preventDefault();
-      void this.togglePlay();
-    } else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
-      e.preventDefault();
-      void this.seek(this.engine.time + (e.code === "ArrowLeft" ? -SEEK_STEP_S : SEEK_STEP_S));
+    const context = { eventSelected: this.selectedEvent !== null, ready: this.phase === "ready" };
+    const hit = shortcutFor(e, e.target as HTMLElement, context);
+    if (!hit) return;
+    if (hit.preventDefault) e.preventDefault();
+    this.runShortcut(hit.action);
+  }
+
+  private runShortcut(action: Shortcut): void {
+    switch (action) {
+      case "undo":
+        return this.undo();
+      case "redo":
+        return this.redo();
+      case "toggleListen":
+        return this.toggleListen();
+      case "deleteEvent": {
+        const index = this.selectedEvent;
+        this.selectedEvent = null;
+        if (index !== null) this.editScene((s) => removeEvent(s, index));
+        return;
+      }
+      case "deselectEvent":
+        return this.selectEvent(null);
+      case "togglePlay":
+        return void this.togglePlay();
+      case "seekBack":
+        return void this.seek(this.engine.time - SEEK_STEP_S);
+      case "seekForward":
+        return void this.seek(this.engine.time + SEEK_STEP_S);
     }
   }
 
