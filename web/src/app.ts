@@ -30,8 +30,9 @@ import { visualRadius } from "./scene/mapping";
 import { OrbitView } from "./scene/orbits";
 import { Stage } from "./scene/stage";
 import { Autosave, type SaveState } from "./session/autosave";
+import { EqSync } from "./session/eq-sync";
 import { openSong, titleOf, type OpenSong } from "./session/song";
-import type { EventKind, ExportFormat, Loudness, Mix, Orbit, Project, ProjectSummary, Room, RoomName, Scene, Speed, TrackName } from "./types";
+import type { EventKind, ExportFormat, Loudness, Mix, Orbit, Project, ProjectSummary, Room, Scene, Speed, TrackName } from "./types";
 import { TRACKS } from "./types";
 import { h } from "./ui/dom";
 import { EXPORT_STATE_LABEL, PROJECT_STATE_LABEL, TEXT } from "./ui/labels";
@@ -47,7 +48,6 @@ const FALLBACK_PRESET = "classic";
 const LAST_PROJECT_KEY = "orbit8d.lastProject";
 const DOME_KEY = "orbit8d.showDome";
 const TOAST_MS = 4000;
-const EQ_DEBOUNCE_MS = 250;
 const ORIGINAL_PREVIEW = "original";
 const SEEK_STEP_S = 5;
 const DEFAULT_RADIUS_M = 1.2; // 还没打开歌时三层半球按默认轨道距离画（与后端 Orbit.radius_m 默认值一致）
@@ -76,8 +76,6 @@ export class App {
   private section = 0;
   private formats: ExportFormat[] = [];
   private paramsDirty = false;
-  private eqTimer = 0;
-  private eqSeq = 0;
   private selectedEvent: number | null = null;
   private scrubTime: number | null = null; // 正在拖播放头时的预览位置
   private drawnTime = Number.NaN; // 3D 上一次画的是哪个时刻（按需重画用）
@@ -90,11 +88,19 @@ export class App {
     setTimer: (fn, ms) => window.setTimeout(fn, ms),
     clearTimer: (id) => window.clearTimeout(id),
   });
-  private readonly brirCache = new Map<RoomName, ArrayBuffer>();
-  private loadedRoom: RoomName | null = null;
   private readonly views = new Map<TrackName, OrbitView>();
   private readonly dome = new Dome();
   private readonly engine = new AudioEngine();
+  private readonly eqSync = new EqSync({
+    target: () => (this.song && this.scene ? { projectId: this.song.project.id, scene: this.scene } : null),
+    fetchEq: (target) => api.sceneEq(target.projectId, target.scene),
+    applyEq: (wav) => this.engine.setEq(wav),
+    fetchRoom: (room) => api.brir(room),
+    applyRoom: (wav) => this.engine.setRoom(wav),
+    onError: (err) => console.warn("[orbit8d] updating the compensation EQ failed, keeping the previous one", err),
+    setTimer: (fn, ms) => window.setTimeout(fn, ms),
+    clearTimer: (id) => window.clearTimeout(id),
+  });
   private stage!: Stage;
   private handles!: Handles;
   private tracksPanel!: TracksPanel;
@@ -374,7 +380,7 @@ export class App {
     this.selectedEvent = null;
     this.history.clear();
     this.timeline.setEnvelope(analysis.envelope_db, analysis.envelope_hop_s);
-    await this.ensureRoom(scene.room.name);
+    await this.eqSync.ensureRoom(scene.room.name);
     await this.engine.setEq(await api.sceneEq(project.id, scene));
     this.applyScene(scene, { record: false, save: false, refreshEq: false });
     for (const view of this.views.values()) view.group.visible = true;
@@ -455,7 +461,7 @@ export class App {
     try {
       const preset = await api.preset(name, this.song.analysis.default_bars);
       const next = applyPreset(this.scene, preset, this.section);
-      await this.ensureRoom(next.room.name);
+      await this.eqSync.ensureRoom(next.room.name);
       this.applyScene(next);
     } catch (err) {
       this.fail(err);
@@ -467,7 +473,7 @@ export class App {
     if (!this.song || !this.scene) return;
     try {
       const scene = await api.rechoreograph(this.song.project.id, this.scene);
-      await this.ensureRoom(scene.room.name);
+      await this.eqSync.ensureRoom(scene.room.name);
       this.applyScene(scene);
       this.toast(TEXT.autoChoreoDone, "info");
     } catch (err) {
@@ -488,10 +494,10 @@ export class App {
     this.section = Math.min(sectionIndexAt(scene, this.engine.time), scene.sections.length - 1);
     this.syncViews();
     this.paramsDirty = true;
-    if (refreshEq) this.scheduleEq();
+    if (refreshEq) this.eqSync.schedule();
     if (save) this.scheduleSave();
     this.updateUndoButtons();
-    if (scene.room.name !== this.loadedRoom) void this.ensureRoom(scene.room.name).catch((err) => this.fail(err));
+    if (scene.room.name !== this.eqSync.room) void this.eqSync.ensureRoom(scene.room.name).catch((err) => this.fail(err));
   }
 
   // ---------- 语言：先把没存的改动存掉，再记住选择并刷新页面 ----------
@@ -600,36 +606,6 @@ export class App {
     this.orbitPanel.sync(ctx);
     this.timeline.setScene(scene, this.duration, this.section, this.selectedEvent);
     this.stage.invalidate();
-  }
-
-  /** 场景改完 250 ms 没再改，就向后端要这个场景的补偿 EQ；只用最后一次请求的结果。 */
-  private scheduleEq(): void {
-    window.clearTimeout(this.eqTimer);
-    this.eqTimer = window.setTimeout(() => void this.refreshEq(), EQ_DEBOUNCE_MS);
-  }
-
-  private async refreshEq(): Promise<void> {
-    const song = this.song;
-    const scene = this.scene;
-    if (!song || !scene) return;
-    const seq = ++this.eqSeq;
-    try {
-      const wav = await api.sceneEq(song.project.id, scene);
-      if (seq === this.eqSeq) await this.engine.setEq(wav);
-    } catch (err) {
-      console.warn("[orbit8d] updating the compensation EQ failed, keeping the previous one", err);
-    }
-  }
-
-  private async ensureRoom(room: RoomName): Promise<void> {
-    if (this.loadedRoom === room) return;
-    let wav = this.brirCache.get(room);
-    if (!wav) {
-      wav = await api.brir(room);
-      this.brirCache.set(room, wav);
-    }
-    await this.engine.setRoom(wav.slice(0)); // decodeAudioData 会转移所有权，传副本
-    this.loadedRoom = room;
   }
 
   // ---------- 每帧：返回 true 表示 3D 画面在动（播放中、拖播放头、播放位置跳了），要重画 ----------
