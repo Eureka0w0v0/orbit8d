@@ -15,7 +15,6 @@ export const TEXT = T.ui;
 
 /** 段落规范名（存档里的值）与时间轴颜色。 */
 export const SECTION_LABELS = ["前奏", "主歌", "副歌", "桥段", "尾声"] as const;
-export const WHOLE_SONG = "全曲";
 export const SECTION_COLORS: Record<string, string> = {
   前奏: "#6f7fb8",
   主歌: "#2fa597",

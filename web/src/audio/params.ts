@@ -18,8 +18,6 @@ export const INPUT_CHANNELS = [
   "other_sub",
 ] as const;
 
-export const SUB_TRACKS = ["bass", "drums", "other"] as const;
-
 export interface SourceParams {
   track: TrackName;
   channel: number;

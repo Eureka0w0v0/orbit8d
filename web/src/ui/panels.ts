@@ -3,8 +3,8 @@
 
 import { effectiveTrackGains } from "../audio/params";
 import { T, directionName, presetName, sectionName } from "../i18n";
-import { BEATS_PER_BAR } from "../orbit/orbit";
 import { DIRECTIONS, matchDirection, orientationFromTilt, tiltFromOrientation } from "../orbit/orientation";
+import { barSeconds } from "../orbit/timeline";
 import { eventsIn, sectionEnd } from "../scene/edit";
 import { LAYERS, layerOf } from "../scene/layers";
 import { TRACK_COLORS } from "../scene/orbits";
@@ -227,7 +227,7 @@ export class OrbitPanel {
     const o = scene.sections[section].orbits[track];
     const orbit = (s: Scene) => s.sections[section].orbits[track];
     const setO = (patch: Partial<Orbit>) => a.setOrbit(track, patch);
-    const barSeconds = (bars: number) => (bars * BEATS_PER_BAR * 60) / analysis.bpm_norm;
+    const bar = barSeconds(analysis.bpm_norm);
     const moving = o.shape !== "fixed";
     const out: HTMLElement[] = [
       h("div", { class: "field-label" }, TEXT.shape),
@@ -282,7 +282,7 @@ export class OrbitPanel {
         ),
         o.speed.mode === "bars"
           ? segmented(
-              BAR_CHOICES.map((b) => ({ value: b, label: `${T.unit.bars(b)} · ${barSeconds(b).toFixed(1)}s` })),
+              BAR_CHOICES.map((b) => ({ value: b, label: `${T.unit.bars(b)} · ${(b * bar).toFixed(1)}s` })),
               o.speed.bars,
               (b) => a.setSpeed(track, { bars: b }),
               "grid2",
@@ -323,7 +323,7 @@ export class OrbitPanel {
     const a = this.actions;
     const sec = scene.sections[section];
     const end = sectionEnd(scene, section, duration);
-    const bars = Math.round((end - sec.start_s) / ((BEATS_PER_BAR * 60) / analysis.bpm_norm));
+    const bars = Math.round((end - sec.start_s) / barSeconds(analysis.bpm_norm));
     const labels: string[] = [...SECTION_LABELS];
     if (!labels.includes(sec.label)) labels.push(sec.label);
     const events = eventsIn(scene, section, duration);
