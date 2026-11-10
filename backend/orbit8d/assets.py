@@ -2,7 +2,11 @@
 
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
+
+import numpy as np
+import soundfile as sf
 
 from orbit8d.config import load_settings
 from orbit8d.download import download, sha256_of
@@ -14,6 +18,7 @@ log = logging.getLogger(__name__)
 HRTF_URL = "https://sofacoustics.org/data/database/thk/HRIR_FULL2DEG.sofa"
 HRTF_FILE = "HRIR_FULL2DEG.sofa"
 HRTF_SHA256 = "d3671e6829323b93b7ae95aff6d9316d15d6c128b7f2ab615c21cc3ab085ddb7"
+BRIR_PREFIX = f"brir_v{BRIR_VERSION}_"  # 缓存文件名带算法版本：算法变了，旧文件就成了“不再使用的缓存”
 
 
 def ensure_hrtf_sofa(assets_dir: Path) -> Path:
@@ -26,17 +31,26 @@ def ensure_hrtf_sofa(assets_dir: Path) -> Path:
     return target
 
 
+def cached_brir(assets_dir: Path, room: str, sample_rate: int, make: Callable[[], np.ndarray]) -> Path:
+    """这个房间的混响冲激响应缓存文件（浏览器试听下载它）；没有就用 make() 生成，先写临时文件再改名。"""
+    path = assets_dir / f"{BRIR_PREFIX}{room}_{sample_rate}.wav"
+    if not path.exists():
+        tmp = path.with_suffix(".tmp.wav")
+        sf.write(tmp, make(), sample_rate, subtype="FLOAT")
+        tmp.replace(path)
+    return path
+
+
 def prune_stale_assets(assets_dir: Path) -> int:
     """删掉不再使用的旧缓存：全局 EQ（已改为按项目、按场景）、旧版本的 BRIR、没写完的临时文件。
     返回删了几个。"""
-    current = f"brir_v{BRIR_VERSION}_"
     stale = [
         path
         for path in assets_dir.glob("*")
         if path.is_file()
         and (
             path.name.startswith("eq_")
-            or (path.name.startswith("brir_") and not path.name.startswith(current))
+            or (path.name.startswith("brir_") and not path.name.startswith(BRIR_PREFIX))
             or ".tmp" in path.name
             or path.suffix == ".part"
         )

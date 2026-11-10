@@ -19,13 +19,13 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from orbit8d import __version__
 from orbit8d.api.guards import ApiError, install_guards
-from orbit8d.assets import ensure_hrtf_sofa, prune_stale_assets
+from orbit8d.assets import cached_brir, ensure_hrtf_sofa, prune_stale_assets
 from orbit8d.config import REPO_ROOT, SAMPLE_RATE, Settings
 from orbit8d.engine.choreo import choreograph, rechoreograph
 from orbit8d.engine.hrtf import load_grid, to_bytes
 from orbit8d.engine.orbit import BAR_CHOICES
 from orbit8d.engine.pipeline import RENDER_VERSION, Analysis, Renderer
-from orbit8d.engine.reverb import BRIR_VERSION, ROOMS
+from orbit8d.engine.reverb import ROOMS
 from orbit8d.engine.scene import PRESETS, Scene, canonical_json, preset
 from orbit8d.engine.structure import SectionInfo
 from orbit8d.jobs.layout import ORIGINAL_PREVIEW
@@ -308,21 +308,12 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     def get_hrtf(request: Request) -> Response:
         return Response(request.app.state.hrtf_bytes, media_type="application/octet-stream")
 
-    def cached_wav(name: str, make) -> Path:
-        path = settings.assets_dir / name
-        if not path.exists():
-            tmp = path.with_suffix(".tmp.wav")
-            sf.write(tmp, make(), SAMPLE_RATE, subtype="FLOAT")
-            tmp.replace(path)
-        return path
-
     @app.get("/api/assets/brir/{room}.wav")
     def get_brir(request: Request, room: str) -> FileResponse:
         if room not in ROOMS:
             raise NotFound(room)
-        path = cached_wav(
-            f"brir_v{BRIR_VERSION}_{room}_{SAMPLE_RATE}.wav", lambda: request.app.state.renderer.brir(room).T
-        )
+        renderer = request.app.state.renderer
+        path = cached_brir(settings.assets_dir, room, SAMPLE_RATE, lambda: renderer.brir(room).T)
         return FileResponse(path, media_type="audio/wav")
 
     @app.post("/api/projects/{pid}/exports")
