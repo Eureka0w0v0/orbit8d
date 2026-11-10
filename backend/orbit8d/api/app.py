@@ -1,4 +1,4 @@
-"""HTTP 接口（SPEC §7）。只监听 127.0.0.1；Host 白名单防 DNS 重绑定；跨站的写请求一律拒绝。"""
+"""HTTP 接口（SPEC §7）。只监听 127.0.0.1；Host 与跨站防护、错误应答的格式见 api/guards.py。"""
 
 import hashlib
 import io
@@ -16,10 +16,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, ValidationError
-from starlette.middleware.trustedhost import TrustedHostMiddleware
-from starlette.types import ASGIApp, Receive, Scope, Send
 
 from orbit8d import __version__
+from orbit8d.api.guards import ApiError, install_guards
 from orbit8d.assets import ensure_hrtf_sofa, prune_stale_assets
 from orbit8d.config import REPO_ROOT, SAMPLE_RATE, Settings
 from orbit8d.engine.choreo import choreograph, rechoreograph
@@ -41,26 +40,17 @@ from orbit8d.jobs.store import (
     safe_name,
 )
 from orbit8d.jobs.worker import JobKind, JobRunner, Separator
-from orbit8d.media.ffmpeg import OUTPUT_FORMATS, MediaError, available_formats, probe
+from orbit8d.media.ffmpeg import OUTPUT_FORMATS, available_formats, probe
 
 log = logging.getLogger(__name__)
 
-ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
-DEV_WEB_PORT = 5173
 ID_LEN = 16
 FILENAME_HEADER = "x-filename"
 PREVIEW_NAMES = frozenset(
     {"vocals_hi", "bass_hi", "drums_hi", "other_hi", "bass_sub", "drums_sub", "other_sub", ORIGINAL_PREVIEW}
 )
 MAX_SCENE_BYTES = 256 * 1024  # 场景 JSON 最多约 30 KB（16 段 × 4 轨 + 64 个事件），留足余量
-SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 WEB_DIST = REPO_ROOT / "web" / "dist"
-
-
-class ApiError(Exception):
-    def __init__(self, status: int, code: str, message: str):
-        super().__init__(message)
-        self.status, self.code, self.message = status, code, message
 
 
 class ExportRequest(BaseModel):
@@ -73,22 +63,6 @@ class ExportRequest(BaseModel):
 class SceneRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scene: Scene
-
-
-class LocalOriginMiddleware:
-    """浏览器发起的跨站写请求一定带 Origin；不在白名单里的直接 403（防 CSRF）。"""
-
-    def __init__(self, app: ASGIApp, allowed_origins: set[str]):
-        self.app, self.allowed = app, allowed_origins
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and scope["method"] not in SAFE_METHODS:
-            origin = dict(scope["headers"]).get(b"origin")
-            if origin is not None and origin.decode("latin-1") not in self.allowed:
-                body = {"code": "FORBIDDEN_ORIGIN", "message": "Cross-site request refused"}
-                await JSONResponse(body, status_code=403)(scope, receive, send)
-                return
-        await self.app(scope, receive, send)
 
 
 def housekeeping(store: Store, settings: Settings) -> None:
@@ -143,21 +117,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
-    origins = {f"http://{host}:{port}" for host in ALLOWED_HOSTS for port in (settings.port, DEV_WEB_PORT)}
-    app.add_middleware(LocalOriginMiddleware, allowed_origins=origins)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)  # 最外层
-
-    @app.exception_handler(ApiError)
-    async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
-        return JSONResponse({"code": exc.code, "message": exc.message}, status_code=exc.status)
-
-    @app.exception_handler(MediaError)
-    async def _media_error(_: Request, exc: MediaError) -> JSONResponse:
-        return JSONResponse({"code": exc.code, "message": str(exc)}, status_code=400)
-
-    @app.exception_handler(NotFound)
-    async def _not_found(_: Request, exc: NotFound) -> JSONResponse:
-        return JSONResponse({"code": "NOT_FOUND", "message": "Not found"}, status_code=404)
+    install_guards(app, settings.port)
 
     @app.get("/api/health")
     def health() -> dict:
