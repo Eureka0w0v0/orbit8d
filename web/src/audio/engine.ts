@@ -5,6 +5,7 @@
 
 import workletUrl from "./worklet.ts?worker&url";
 import { parseHrtf } from "./hrtf";
+import type { ListenMode } from "../types";
 import { INPUT_CHANNELS, type RenderParams } from "./params";
 import type { WorkletMessage } from "./worklet";
 
@@ -17,7 +18,6 @@ const PARAM_RAMP_S = 0.05;
 const EQ_FADE_S = 0.08;
 const AB_FADE_S = 0.04;
 
-export type ListenMode = "8d" | "original";
 const LIMITER = { threshold: -1, knee: 0, ratio: 20, attack: 0.001, release: 0.1 };
 const METER_FFT = 2048;
 const METER_FLOOR_DB = -90;

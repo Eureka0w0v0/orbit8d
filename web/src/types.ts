@@ -80,6 +80,9 @@ export interface SectionInfo {
 
 export type CalibrationKey = TrackName | "sub";
 
+/** 试听时在听哪一路：8D 渲染，还是原曲（A/B 对比）。只有前端有这个概念。 */
+export type ListenMode = "8d" | "original";
+
 export interface Analysis {
   sample_rate: number;
   duration_s: number;

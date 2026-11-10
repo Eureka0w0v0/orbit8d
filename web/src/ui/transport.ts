@@ -1,6 +1,6 @@
 // 底部的播放条：播放 / 暂停、8D / 原曲切换、时间、时间轴、电平表。
 
-import type { ListenMode } from "../audio/engine";
+import type { ListenMode } from "../types";
 import { fmt, h } from "./dom";
 import { TEXT } from "./labels";
 
