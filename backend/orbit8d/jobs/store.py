@@ -13,13 +13,12 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from orbit8d.config import Settings
+from orbit8d.jobs.layout import RECORD_FILE, ExportFiles, ProjectFiles
 from orbit8d.jobs.states import ExportState, ProjectState, check_transition, is_terminal
 
 log = logging.getLogger(__name__)
 
 ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
-RECORD_FILE = "record.json"
-SCENE_FILE = "scene.json"
 PROJECT_INTERRUPTED = "INTERRUPTED"
 EXPORT_INTERRUPTED = "EXPORT_INTERRUPTED"
 UPLOAD_SUFFIX = ".part"
@@ -90,15 +89,15 @@ class Store:
         return self._lock
 
     # ---- 路径（ID 先校验格式，杜绝路径穿越） ----
-    def project_dir(self, pid: str) -> Path:
+    def project_files(self, pid: str) -> ProjectFiles:
         if not valid_id(pid):
             raise NotFound(pid)
-        return self.settings.projects_dir / pid
+        return ProjectFiles(self.settings.projects_dir / pid)
 
-    def export_dir(self, eid: str) -> Path:
+    def export_files(self, eid: str) -> ExportFiles:
         if not valid_id(eid):
             raise NotFound(eid)
-        return self.settings.exports_dir / eid
+        return ExportFiles(self.settings.exports_dir / eid)
 
     # ---- 底层读写 ----
     @staticmethod
@@ -114,7 +113,7 @@ class Store:
 
     # ---- 项目 ----
     def find_project(self, pid: str) -> ProjectRecord | None:
-        data = self._read(self.project_dir(pid) / RECORD_FILE)
+        data = self._read(self.project_files(pid).record)
         return ProjectRecord.from_dict(data) if data else None
 
     def get_project(self, pid: str) -> ProjectRecord:
@@ -128,12 +127,12 @@ class Store:
             existing = self.find_project(rec.id)
             if existing:
                 return existing, False
-            self._write(self.project_dir(rec.id) / RECORD_FILE, rec.to_dict())
+            self._write(self.project_files(rec.id).record, rec.to_dict())
             return rec, True
 
     def save_project(self, rec: ProjectRecord) -> None:
         rec.updated_at = time.time()
-        self._write(self.project_dir(rec.id) / RECORD_FILE, rec.to_dict())
+        self._write(self.project_files(rec.id).record, rec.to_dict())
 
     def transition_project(self, pid: str, target: ProjectState, **changes) -> ProjectRecord:
         with self._lock:
@@ -169,12 +168,12 @@ class Store:
 
     def last_used(self, rec: ProjectRecord) -> float:
         """最近一次用这首歌的时间：记录更新（导入、分析）或保存场景，取较晚者。"""
-        scene = self.project_dir(rec.id) / SCENE_FILE
+        scene = self.project_files(rec.id).scene
         return max(rec.updated_at, scene.stat().st_mtime if scene.exists() else 0.0)
 
     def disk_usage(self, pid: str) -> int:
         """这首歌占的磁盘空间（字节）：项目目录 + 它的导出。"""
-        dirs = [self.project_dir(pid), *(self.export_dir(e.id) for e in self.exports_of(pid))]
+        dirs = [self.project_files(pid).root, *(self.export_files(e.id).root for e in self.exports_of(pid))]
         return sum(f.stat().st_size for d in dirs for f in d.rglob("*") if f.is_file())
 
     def exports_of(self, pid: str) -> list[ExportRecord]:
@@ -188,8 +187,8 @@ class Store:
             self.get_project(pid)
             moved = []
             for rec in self.exports_of(pid):
-                moved.append(self._to_trash(self.export_dir(rec.id), f"export-{rec.id}"))
-            moved.append(self._to_trash(self.project_dir(pid), f"project-{pid}"))
+                moved.append(self._to_trash(self.export_files(rec.id).root, f"export-{rec.id}"))
+            moved.append(self._to_trash(self.project_files(pid).root, f"project-{pid}"))
         extra = {"event": "project.delete", "project_id": pid, "exports": len(moved) - 1}
         log.info("project trashed", extra=extra)
         return moved
@@ -229,18 +228,18 @@ class Store:
     def save_scene(self, pid: str, text: str) -> None:
         with self._lock:  # 与删除互斥：确认项目还在再写
             self.get_project(pid)
-            path = self.project_dir(pid) / SCENE_FILE
+            path = self.project_files(pid).scene
             tmp = path.with_suffix(".tmp")
             tmp.write_text(text, encoding="utf-8")
             os.replace(tmp, path)
 
     def load_scene(self, pid: str) -> str | None:
-        path = self.project_dir(pid) / SCENE_FILE
+        path = self.project_files(pid).scene
         return path.read_text(encoding="utf-8") if path.exists() else None
 
     # ---- 导出 ----
     def find_export(self, eid: str) -> ExportRecord | None:
-        data = self._read(self.export_dir(eid) / RECORD_FILE)
+        data = self._read(self.export_files(eid).record)
         return ExportRecord.from_dict(data) if data else None
 
     def get_export(self, eid: str) -> ExportRecord:
@@ -254,12 +253,12 @@ class Store:
             existing = self.find_export(rec.id)
             if existing:
                 return existing, False
-            self._write(self.export_dir(rec.id) / RECORD_FILE, rec.to_dict())
+            self._write(self.export_files(rec.id).record, rec.to_dict())
             return rec, True
 
     def save_export(self, rec: ExportRecord) -> None:
         rec.updated_at = time.time()
-        self._write(self.export_dir(rec.id) / RECORD_FILE, rec.to_dict())
+        self._write(self.export_files(rec.id).record, rec.to_dict())
 
     def transition_export(self, eid: str, target: ExportState, **changes) -> ExportRecord:
         with self._lock:

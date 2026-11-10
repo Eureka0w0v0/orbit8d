@@ -35,8 +35,9 @@ from orbit8d.engine.scene import (
     Speed,
 )
 from orbit8d.engine.timeline import compile_track, track_position, wet_db_curve
+from orbit8d.jobs.layout import ORIGINAL_PREVIEW
 from orbit8d.jobs.states import ExportState, ProjectState
-from orbit8d.jobs.worker import ORIGINAL_PREVIEW, STEP_MODEL_DOWNLOAD
+from orbit8d.jobs.worker import STEP_MODEL_DOWNLOAD
 from orbit8d.media.ffmpeg import OUTPUT_FORMATS
 
 GOLDEN_DIR = Path(__file__).resolve().parents[2] / "shared" / "golden"

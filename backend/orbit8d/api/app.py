@@ -29,17 +29,10 @@ from orbit8d.engine.pipeline import RENDER_VERSION, Analysis, Renderer
 from orbit8d.engine.reverb import BRIR_VERSION, ROOMS
 from orbit8d.engine.scene import PRESETS, Scene, canonical_json, preset
 from orbit8d.engine.structure import SectionInfo
+from orbit8d.jobs.layout import ORIGINAL_PREVIEW
 from orbit8d.jobs.states import ExportState, ProjectState, is_terminal
 from orbit8d.jobs.store import UPLOAD_SUFFIX, ExportRecord, NotFound, ProjectRecord, Store
-from orbit8d.jobs.worker import (
-    ORIGINAL_PREVIEW,
-    PREVIEW_DIR,
-    SOURCE_FILE,
-    JobRunner,
-    Separator,
-    safe_name,
-    song_title,
-)
+from orbit8d.jobs.worker import JobRunner, Separator, safe_name, song_title
 from orbit8d.media.ffmpeg import OUTPUT_FORMATS, MediaError, available_formats, probe
 
 log = logging.getLogger(__name__)
@@ -222,8 +215,9 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
             return existing, 200
         if info is None:  # 查的时候还在、加锁前被删了：按新歌再来一次
             raise ApiError(409, "PROJECT_BUSY", "The song was just deleted; import it again")
-        store.project_dir(pid).mkdir(parents=True, exist_ok=True)
-        tmp.replace(store.project_dir(pid) / SOURCE_FILE)
+        files = store.project_files(pid)
+        files.root.mkdir(parents=True, exist_ok=True)
+        tmp.replace(files.source)
         rec, _ = store.create_project_if_absent(
             ProjectRecord(
                 id=pid,
@@ -337,7 +331,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
             raise NotFound(name)
         if rec.state is not ProjectState.READY:
             raise ApiError(409, "PROJECT_NOT_READY", "Still processing")
-        path = store.project_dir(pid) / PREVIEW_DIR / f"{name}.flac"
+        path = store.project_files(pid).preview(name)
         if not path.exists():
             raise NotFound(name)
         return FileResponse(path, media_type="audio/flac")
@@ -404,7 +398,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
             raise ApiError(409, "EXPORT_NOT_READY", "The export is not finished yet")
         fmt = OUTPUT_FORMATS[rec.format]
         return FileResponse(
-            store.export_dir(eid) / f"output.{fmt.ext}", media_type=fmt.mime, filename=rec.file_name
+            store.export_files(eid).output(fmt.ext), media_type=fmt.mime, filename=rec.file_name
         )
 
     if WEB_DIST.is_dir():
