@@ -152,7 +152,7 @@ def walk(s: Session) -> None:
 def open_and_import(s: Session, song: Path) -> None:
     with s.step("open the app"):
         s.page.navigate(s.url)
-        s.page.wait("window.__ui && document.body.dataset.phase === 'empty'", "the import page", 90)
+        s.page.wait("window.__ui && document.body?.dataset.phase === 'empty'", "the import page", 90)
         s.expect("the drop zone is shown", overlay="drop", title="")
     with s.step("import a song"):
         s.page.set_files(FILE_INPUT, [song])
