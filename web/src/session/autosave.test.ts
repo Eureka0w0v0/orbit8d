@@ -197,6 +197,33 @@ describe("自动保存", () => {
     expect(h.calls).toHaveLength(0);
   });
 
+  it("删歌没删成（后端说歌还在处理）：没存的改动还在，照常保存", async () => {
+    const h = harness();
+    h.autosave.changed(job("1"));
+    const refused = h.autosave.discardWhile(() => Promise.reject(new Error("PROJECT_BUSY")));
+    await expect(refused).rejects.toThrow("PROJECT_BUSY");
+    expect(h.autosave.state).toBe("saving");
+    await h.advance(SAVE_DEBOUNCE_MS);
+    expect(labels(h.calls)).toEqual(["1"]);
+    h.calls[0].succeed();
+    await h.settle();
+    expect(h.autosave.state).toBe("saved");
+  });
+
+  it("删歌没删成，但等结果的时候又改过：存的是更新的那份，只存一次", async () => {
+    const h = harness();
+    h.autosave.changed(job("1"));
+    let refuse: (err: Error) => void = () => undefined;
+    const refused = h.autosave.discardWhile(() => new Promise<void>((_, reject) => (refuse = reject)));
+    h.autosave.changed(job("2"));
+    refuse(new Error("PROJECT_BUSY"));
+    await expect(refused).rejects.toThrow("PROJECT_BUSY");
+    await h.advance(SAVE_DEBOUNCE_MS);
+    expect(labels(h.calls)).toEqual(["2"]);
+    await h.advance(SAVE_DEBOUNCE_MS + SAVE_RETRY_MS);
+    expect(h.calls).toHaveLength(1);
+  });
+
   it("每件事之后显示什么（状态表）", () => {
     expect(STATE_AFTER).toEqual({ changed: "saving", stored: "saved", storeFailed: "failed", opened: "saved" });
   });

@@ -83,10 +83,19 @@ export class Autosave {
     this.emit("opened");
   }
 
-  /** 做一件会让没存的改动作废的事（删掉正在用的歌）：先把待存的改动丢掉，再去做。 */
-  discardWhile<T>(action: () => Promise<T>): Promise<T> {
+  /**
+   * 做一件会让没存的改动作废的事（删掉正在用的歌）：期间先不保存（免得往正在删的歌里存）。
+   * 做成了，改动作废；没做成（后端拒绝了），把改动放回去照常保存——等结果的时候又改过的话，更新的那份已经在排队。
+   */
+  async discardWhile<T>(action: () => Promise<T>): Promise<T> {
     this.deps.clearTimer(this.timer);
+    const held = this.pending;
     this.pending = null;
-    return action();
+    try {
+      return await action();
+    } catch (err) {
+      if (held && !this.pending) this.changed(held);
+      throw err;
+    }
   }
 }
