@@ -39,6 +39,7 @@ import { OrbitPanel, TracksPanel, type PanelActions, type PanelContext } from ".
 import { SchemaRanges } from "./ui/schema";
 import { TimelineStrip } from "./ui/timeline";
 import { canGo, type Phase } from "./ui/phase";
+import { BUSY, describe, progressOf } from "./ui/progress";
 import { ExportDialog, Overlay, SongMenu, Transport, languageSelect, songLabel, songList, type SongActions } from "./ui/widgets";
 
 const FALLBACK_PRESET = "classic";
@@ -51,14 +52,6 @@ const SAVE_RETRY_MS = 5000;
 const ORIGINAL_PREVIEW = "original";
 const SEEK_STEP_S = 5;
 const DEFAULT_RADIUS_M = 1.2; // 还没打开歌时三层半球按默认轨道距离画（与后端 Orbit.radius_m 默认值一致）
-const STAGE_SPAN: Partial<Record<Project["state"], [number, number]>> = {
-  UPLOADED: [0, 0.02],
-  DECODING: [0.02, 0.06],
-  SEPARATING: [0.06, 0.88],
-  ANALYZING: [0.88, 1],
-};
-const BUSY: ReadonlySet<Project["state"]> = new Set(["UPLOADED", "DECODING", "SEPARATING", "ANALYZING"]);
-const MODEL_DOWNLOAD_STEP = "model_download"; // 分轨前第一次下载模型（后端 Project.step）
 const STEREO: ReadonlySet<TrackName> = new Set(["drums", "other"]);
 const TEXT_ENTRY = new Set(["TEXTAREA", "SELECT"]);
 const TEXT_INPUT_TYPES = new Set(["text", "search", "number", "email", "password", "url"]);
@@ -69,13 +62,6 @@ type SaveState = "saved" | "saving" | "failed";
 function isTextEntry(el: HTMLElement): boolean {
   if (TEXT_ENTRY.has(el.tagName) || el.isContentEditable) return true;
   return el.tagName === "INPUT" && TEXT_INPUT_TYPES.has((el as HTMLInputElement).type);
-}
-
-/** 给用户看的错误：按错误码用当前语言说明，后面带上错误码方便排查。 */
-function describe(err: unknown): string {
-  if (err instanceof ApiError) return `${errorText(err.code, err.message)} (${err.code})`;
-  if (err instanceof Error) return err.message;
-  return String(err);
 }
 
 function editMessage(reason: EditReason): string {
@@ -338,10 +324,10 @@ export class App {
     const done = await poll(
       () => api.project(project.id),
       (p) => p.state === "READY" || p.state === "FAILED",
-      (p) =>
-        p.step === MODEL_DOWNLOAD_STEP
-          ? this.overlay.showProgress(TEXT.modelDownload, p.progress, p.source.filename)
-          : this.overlay.showProgress(PROJECT_STATE_LABEL[p.state], this.overallProgress(p), p.source.filename),
+      (p) => {
+        const { title, fraction } = progressOf(p);
+        this.overlay.showProgress(title, fraction, p.source.filename);
+      },
     );
     if (done.state === "FAILED") {
       throw new ApiError(0, done.error?.code ?? "FAILED", done.error?.message ?? PROJECT_STATE_LABEL.FAILED);
@@ -364,11 +350,6 @@ export class App {
     } catch (err) {
       this.fail(err);
     }
-  }
-
-  private overallProgress(p: Project): number {
-    const [lo, hi] = STAGE_SPAN[p.state] ?? [1, 1];
-    return lo + (hi - lo) * p.progress;
   }
 
   /** 优先用这首歌上次保存的场景；没保存过用自动编排；万一取不到就退回经典预设。 */

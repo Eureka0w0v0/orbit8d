@@ -1,7 +1,7 @@
 // 前后端契约：shared/golden/contract.json 是后端常量的快照（backend/tests/make_golden.py 生成，test_contract.py 校验），
 // 这里断言 TS 的常量、类型与 i18n 和它一致。联合类型、接口在运行时不存在，所以用 `satisfies Record<类型, true>`
 // 列成员清单：类型多一个或少一个成员都编译不过（npm run typecheck），清单再在运行时与 contract.json 比对。
-// TS 侧没有导出的副本（如 audio/engine.ts 的 STEM_LAYOUT、app.ts 的 MODEL_DOWNLOAD_STEP）暂不断言，导出后再补进来。
+// TS 侧没有导出的副本（如 audio/engine.ts 的 STEM_LAYOUT）暂不断言，导出后再补进来。
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -34,6 +34,7 @@ import type {
   TrackName,
 } from "./types";
 import { HOLD_RAMP_S, TRACKS } from "./types";
+import { BUSY, MODEL_DOWNLOAD_STEP } from "./ui/progress";
 import type { SchemaDef } from "./ui/schema";
 
 interface ObjectSchema {
@@ -47,6 +48,7 @@ interface Contract {
   loudness: string[];
   project_states: string[];
   export_states: string[];
+  project_steps: string[];
   source_channels: string[];
   preview_files: Record<string, number[]>;
   sample_rate: number;
@@ -191,6 +193,11 @@ describe("前后端契约（shared/golden/contract.json）", () => {
     expect(keys(LOUDNESS)).toEqual(sorted(contract.loudness));
     expect(keys(PROJECT_STATES)).toEqual(sorted(contract.project_states));
     expect(keys(EXPORT_STATES)).toEqual(sorted(contract.export_states));
+  });
+
+  it("处理中的状态与“下载模型”这个子步骤", () => {
+    expect([...BUSY].sort()).toEqual(contract.project_states.filter((s) => s !== "READY" && s !== "FAILED").sort());
+    expect(contract.project_steps).toEqual([MODEL_DOWNLOAD_STEP]);
   });
 
   it("场景的枚举字段（形状、转动方向、速度模式、小节数、事件、房间）与 /api/scene/schema 一致", () => {
