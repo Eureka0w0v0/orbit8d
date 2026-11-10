@@ -35,6 +35,12 @@ def valid_id(value: str) -> bool:
     return bool(ID_PATTERN.fullmatch(value))
 
 
+def known_fields(record_type: type, data: dict) -> dict:
+    """只留这种记录认识的键：别的版本多写的键（旧版留下的，或以后的版本加的）读取时忽略。"""
+    names = {f.name for f in fields(record_type)}
+    return {key: value for key, value in data.items() if key in names}
+
+
 def safe_name(text: str, fallback: str = UNTITLED) -> str:
     """去掉路径分隔符和控制字符，只用于显示与下载文件名，从不参与拼接存储路径。"""
     cleaned = UNSAFE_CHARS.sub(" ", text).strip(" .")
@@ -57,8 +63,7 @@ class SourceInfo:
 
     @classmethod
     def from_dict(cls, data: dict) -> "SourceInfo":
-        known = {f.name for f in fields(cls)}
-        return cls(**{key: value for key, value in data.items() if key in known})
+        return cls(**known_fields(cls, data))
 
     @property
     def song_title(self) -> str:
@@ -95,7 +100,7 @@ class ProjectRecord:
     @classmethod
     def from_dict(cls, data: dict) -> "ProjectRecord":
         source = SourceInfo.from_dict(data["source"])
-        return cls(**{**data, "state": ProjectState(data["state"]), "source": source})
+        return cls(**{**known_fields(cls, data), "state": ProjectState(data["state"]), "source": source})
 
 
 @dataclass
@@ -106,7 +111,6 @@ class ExportRecord:
     format: str
     scene: dict
     loudness: str = "loud"  # 导出响度（master.LOUDNESS_TARGETS 的键）；旧记录没有这一项，按“响亮”
-    progress: float = 0.0
     error: dict | None = None
     file_name: str = ""
     created_at: float = field(default_factory=time.time)
@@ -117,7 +121,7 @@ class ExportRecord:
 
     @classmethod
     def from_dict(cls, data: dict) -> "ExportRecord":
-        return cls(**{**data, "state": ExportState(data["state"])})
+        return cls(**{**known_fields(cls, data), "state": ExportState(data["state"])})
 
 
 class Store:
@@ -309,7 +313,7 @@ class Store:
             rec = self.get_export(eid)
             check_transition(rec.state, target)
             previous = rec.state
-            rec.state, rec.progress = target, 0.0
+            rec.state = target
             if target is not ExportState.FAILED:
                 rec.error = None
             for key, value in changes.items():

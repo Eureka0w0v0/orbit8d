@@ -147,7 +147,6 @@ export interface ExportRecord {
   state: ExportState;
   format: ExportFormat;
   loudness: Loudness;
-  progress: number;
   error: ApiErrorBody | null;
   file_name: string;
 }

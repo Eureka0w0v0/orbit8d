@@ -187,7 +187,8 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 项目记录另有 `step`：状态里的子步骤，目前只有分轨前第一次下载模型时为 `model_download`（`progress` 此时是下载进度），每次状态跳转清空。
 
 ### 6.1 存储、迁移与删除（`jobs/worker.py`、`jobs/store.py`）
-- 项目目录：`source`（上传的原文件）、`stems/*.flac`（4 条分轨，24 位 FLAC，每轨缩放到 ±1 以内，缩放系数记在记录的 `stem_scales`）、`preview/*.flac`、`analysis.json`、`scene.json`、`record.json`。解码出的 `orig.wav` 只在分析期间存在，用完即删；重新分析时从 `source` 再解码。
+- 项目目录：`source`（上传的原文件）、`stems/*.flac`（4 条分轨，24 位 FLAC，每轨缩放到 ±1 以内，缩放系数记在记录的 `stem_scales`）、`preview/*.flac`、`scene.json`、`record.json`。解码出的 `orig.wav` 只在分析期间存在，用完即删；重新分析时从 `source` 再解码。分析结果只存在 `record.json` 里：旧版另写的那份 `analysis.json` 从来没人读，现在不再写（已有的不动，随项目一起删）。
+- 读记录时忽略这个版本不认识的键（旧版留下的，如导出记录里从没用过的 `progress`；或以后的版本加的），缺的键用默认值，所以新旧版本写的记录都读得出来。
 - 分轨 WAV → FLAC：写 FLAC → 读回逐段比对（误差 ≤ 4 个最低位）→ 记录写缩放系数 → 删 WAV。同一轨有 WAV 就用 WAV（缩放 1），所以中途崩溃不会出现缩放系数对不上的 FLAC；重复执行无副作用。
 - 启动时：清空回收目录 `data/trash/`、删掉上次没传完的上传、删掉不再使用的旧缓存（全局 EQ `eq_*.wav`、旧版本 BRIR、临时文件）；已就绪且还有 WAV 分轨或 `orig.wav` 的旧项目排队迁移（在重新分析之前）。
 - 删除：有排队或正在跑的任务（任务队列按歌计数）或状态不是 READY / FAILED 时拒绝（409 `PROJECT_BUSY`）；否则先把它的导出目录、再把项目目录改名挪进回收目录（原子），再删。“查状态 + 改记录 + 排任务”与删除都在存储锁里做（上传、导出、保存场景同样），不会删到一半又有新任务。
@@ -216,7 +217,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | POST | /api/projects/{id}/eq | `{scene}` → 这个场景的补偿 EQ（单声道 float32 WAV，1025 点），导出用同一个函数 |
 | GET | /api/assets/hrtf.bin, /api/assets/brir/{room}.wav | DSP 数据（BRIR 缓存文件名带算法版本） |
 | POST | /api/projects/{id}/exports | `{scene, format, loudness}`（loudness = loud / standard，默认 loud）；导出 ID = sha256(渲染版本 + 项目 ID + 规范化场景 JSON + 格式 + 响度) 前 16 位（幂等；渲染算法升级后不复用旧导出） |
-| GET | /api/exports/{id} | 状态、进度 |
+| GET | /api/exports/{id} | 状态（QUEUED / RENDERING / ENCODING / DONE / FAILED，阶段本身就是进度）、失败时的错误码、完成后的下载文件名 |
 | GET | /api/exports/{id}/file | 下载 |
 
 输入格式白名单（ffprobe 的 codec_name）：mp3、aac、alac、flac、pcm_*、vorbis、opus。

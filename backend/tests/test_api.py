@@ -420,6 +420,41 @@ def test_migration_keeps_the_wav_when_verification_fails(client, ready_project, 
     assert (pdir / "stems" / "vocals.wav").exists()  # 校验没过，原文件保留
 
 
+def test_a_new_project_keeps_its_analysis_only_in_the_record(client, ready_project, data_dir):
+    """分析结果只存在项目记录里；不再另写一份从来不读的 analysis.json。"""
+    pdir = data_dir / "projects" / ready_project
+    assert sorted(p.name for p in pdir.iterdir()) == ["preview", "record.json", "source", "stems"]
+    assert client.get(f"/api/projects/{ready_project}").json()["analysis"]["version"] == ANALYSIS_VERSION
+
+
+def test_what_older_versions_left_behind_is_still_readable(client, ready_project, data_dir):
+    """旧版留下的东西：导出记录里从没用过的 progress、项目目录里只写不读的 analysis.json，还有记录里
+    这个版本不认识的键。重启后照常列出、读取、下载，同参数再导出还是同一个导出。"""
+    import json
+
+    payload = {"scene": Scene().model_dump(mode="json"), "format": "wav"}
+    eid = client.post(f"/api/projects/{ready_project}/exports", json=payload).json()["id"]
+    wait_idle(client)
+    project_record = data_dir / "projects" / ready_project / "record.json"
+    export_record = data_dir / "exports" / eid / "record.json"
+    project = json.loads(project_record.read_text())
+    (project_record.parent / "analysis.json").write_text(json.dumps(project["analysis"]))
+    project_record.write_text(json.dumps({**project, "written_by_another_version": True}))
+    export = json.loads(export_record.read_text())
+    export_record.write_text(json.dumps({**export, "progress": 0.0, "written_by_another_version": True}))
+    with TestClient(create_app(load_settings(), FakeSeparator()), base_url=BASE) as fresh:
+        assert fresh.app.state.runner.wait_idle(WAIT_S)
+        listed = fresh.get("/api/projects").json()
+        seen = fresh.get(f"/api/projects/{ready_project}").json()
+        old_export = fresh.get(f"/api/exports/{eid}").json()
+        again = fresh.post(f"/api/projects/{ready_project}/exports", json=payload)
+        download = fresh.get(f"/api/exports/{eid}/file")
+    assert [item["id"] for item in listed] == [ready_project] and seen["state"] == "READY"
+    assert seen["analysis"] == project["analysis"]
+    assert old_export["state"] == "DONE" and "progress" not in old_export
+    assert again.status_code == 200 and again.json()["id"] == eid and download.status_code == 200
+
+
 def test_projects_are_listed_most_recent_first(client, ready_project, tmp_path):
     second = upload(client, write_song(tmp_path / "other.wav", seed=3), "Other.wav").json()["id"]
     wait_idle(client)

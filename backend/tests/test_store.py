@@ -1,7 +1,7 @@
 """项目记录的形状（SPEC §6.1）：上传文件的元数据、由它得出的显示名与导出文件名，以及旧记录还读得出来。"""
 
-from orbit8d.jobs.states import ProjectState
-from orbit8d.jobs.store import MAX_NAME, ProjectRecord, SourceInfo, safe_name
+from orbit8d.jobs.states import ExportState, ProjectState
+from orbit8d.jobs.store import MAX_NAME, ExportRecord, ProjectRecord, SourceInfo, safe_name
 
 SOURCE = {
     "filename": "Demo Song.mp3",
@@ -22,6 +22,18 @@ OLD_PROJECT = {  # 分轨改存 FLAC 之前写的记录：没有 step、stem_sca
     "error": None,
     "analysis": {"version": 3, "bpm": 120.0},
     "preview_scale": 1.3,
+    "created_at": 1.0,
+    "updated_at": 2.0,
+}
+OLD_EXPORT = {  # 可选响度之前写的导出记录：没有 loudness，带着一个从来没用过的 progress
+    "id": "fedcba9876543210",
+    "project_id": "0123456789abcdef",
+    "state": "DONE",
+    "format": "m4a",
+    "scene": {"version": 2},
+    "progress": 0.0,
+    "error": None,
+    "file_name": "Demo Song (8D).m4a",
     "created_at": 1.0,
     "updated_at": 2.0,
 }
@@ -61,3 +73,18 @@ def test_an_old_project_record_loads_and_is_written_back_unchanged():
 def test_a_source_with_missing_or_extra_keys_still_loads():
     source = SourceInfo.from_dict({"filename": "x.wav", "bitrate": 320})
     assert source == SourceInfo(filename="x.wav") and source.artist == "" and source.has_cover is False
+
+
+def test_an_old_export_record_loads_and_its_unused_progress_is_dropped():
+    rec = ExportRecord.from_dict(OLD_EXPORT)
+    assert rec.state is ExportState.DONE and rec.loudness == "loud"
+    expected = {key: value for key, value in OLD_EXPORT.items() if key != "progress"}
+    assert rec.to_dict() == {**expected, "loudness": "loud"}
+
+
+def test_records_ignore_keys_they_do_not_know():
+    """别的版本多写的键（旧版留下的，或者以后的版本加的）不妨碍读取。"""
+    project = ProjectRecord.from_dict({**OLD_PROJECT, "written_by_another_version": 1})
+    export = ExportRecord.from_dict({**OLD_EXPORT, "written_by_another_version": 1})
+    assert project.id == OLD_PROJECT["id"] and export.id == OLD_EXPORT["id"]
+    assert "written_by_another_version" not in {**project.to_dict(), **export.to_dict()}

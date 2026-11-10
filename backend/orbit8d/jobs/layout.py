@@ -29,10 +29,6 @@ class ProjectFiles:
         return self.root / "orig.wav"
 
     @property
-    def analysis(self) -> Path:
-        return self.root / "analysis.json"
-
-    @property
     def scene(self) -> Path:
         """用户保存的场景。"""
         return self.root / "scene.json"

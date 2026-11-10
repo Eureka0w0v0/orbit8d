@@ -159,7 +159,6 @@ const RECORD_FIELDS: Record<keyof Contract["record_fields"], object> = {
     state: true,
     format: true,
     loudness: true,
-    progress: true,
     error: true,
     file_name: true,
   } satisfies Record<keyof ExportRecord, true>,

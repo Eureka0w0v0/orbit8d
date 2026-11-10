@@ -207,7 +207,6 @@ class JobRunner:
         store.set_project_progress(pid, ANALYZED_PROGRESS)
         scale = max(1.0, result.peak)  # 24 位 FLAC 不能超过 ±1：所有试听文件统一缩放
         write_previews(files, result.sources, orig, scale)
-        files.analysis.write_text(result.analysis.to_json(), encoding="utf-8")
         store.transition_project(
             pid, ProjectState.READY, analysis=json.loads(result.analysis.to_json()), preview_scale=scale
         )
