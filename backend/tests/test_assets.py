@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from orbit8d.assets import AssetError, download, prune_stale_assets
+from orbit8d.assets import prune_stale_assets
+from orbit8d.download import AssetError, download
 from orbit8d.separate.model import LOCAL_DIR, ModelDownloadError, bag_progress, model_files
 
 PAYLOAD = bytes(range(256)) * 9000  # 约 2.3 MB：会分好几块下载

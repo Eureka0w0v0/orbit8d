@@ -8,7 +8,7 @@ import logging
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from orbit8d.assets import download, sha256_of
+from orbit8d.download import download, sha256_of
 from orbit8d.errors import CodedError
 
 log = logging.getLogger(__name__)
