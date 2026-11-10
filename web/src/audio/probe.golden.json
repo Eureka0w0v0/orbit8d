@@ -1,0 +1,1668 @@
+{
+ "build the graph and initialise the worklet": [
+  {
+   "do": "new AudioEngine()",
+   "log": [
+    "new AudioContext({\"sampleRate\":44100,\"latencyHint\":\"interactive\"})",
+    "ctx.createConvolver() -> convolver1",
+    "convolver1.normalize = false",
+    "ctx.createGain() -> gain1",
+    "ctx.createConvolver() -> convolver2",
+    "ctx.createConvolver() -> convolver3",
+    "ctx.createGain() -> gain2",
+    "ctx.createGain() -> gain3",
+    "ctx.createGain() -> gain4",
+    "ctx.createGain() -> gain5",
+    "ctx.createGain() -> gain6",
+    "gain6.gain.value = 0",
+    "ctx.createDynamicsCompressor() -> compressor1",
+    "compressor1.threshold.value = -1",
+    "compressor1.knee.value = 0",
+    "compressor1.ratio.value = 20",
+    "compressor1.attack.value = 0.001",
+    "compressor1.release.value = 0.1",
+    "convolver1.connect(gain1)",
+    "convolver2.normalize = false",
+    "gain2.gain.value = 1",
+    "gain1.connect(convolver2)",
+    "convolver2.connect(gain2)",
+    "gain2.connect(gain5)",
+    "convolver3.normalize = false",
+    "gain3.gain.value = 0",
+    "gain1.connect(convolver3)",
+    "convolver3.connect(gain3)",
+    "gain3.connect(gain5)",
+    "gain5.connect(gain4)",
+    "gain4.connect(compressor1)",
+    "compressor1.connect(destination)",
+    "gain6.connect(compressor1)",
+    "ctx.createChannelSplitter(2) -> splitter1",
+    "ctx.createAnalyser() -> analyser1",
+    "ctx.createAnalyser() -> analyser2",
+    "compressor1.connect(splitter1)",
+    "analyser1.fftSize = 2048",
+    "splitter1.connect(analyser1, 0)",
+    "analyser2.fftSize = 2048",
+    "splitter1.connect(analyser2, 1)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 0, playing false, listening 8d"
+  },
+  {
+   "do": "init(hrtf)",
+   "log": [
+    "audioWorklet.addModule(<worklet module>)",
+    "new AudioWorkletNode(\"orbit8d-binaural\", {\"numberOfInputs\":1,\"numberOfOutputs\":2,\"outputChannelCount\":[2,1],\"channelCount\":9,\"channelCountMode\":\"explicit\",\"channelInterpretation\":\"discrete\"}) -> worklet1",
+    "worklet1.connect(gain1, 0)",
+    "worklet1.connect(convolver1, 1)",
+    "worklet1.port.postMessage(init: table 44100 Hz, 48 taps, 12 az x 5 el, 5760 values, checksum 12.8634)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 0, playing false, listening 8d"
+  },
+  {
+   "do": "levels()",
+   "log": [
+    "analyser1.getFloatTimeDomainData(<2048>)",
+    "analyser2.getFloatTimeDomainData(<2048>)",
+    "levels() -> -26.0206, -20"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 0, playing false, listening 8d"
+  }
+ ],
+ "load a song in the order App.loadProject uses": [
+  {
+   "do": "loadStems(7 preview files)",
+   "log": [
+    "ctx.decodeAudioData(<vocals_hi>) -> buffer1<vocals_hi>(1 ch, 66155 frames)",
+    "ctx.decodeAudioData(<bass_hi>) -> buffer2<bass_hi>(1 ch, 66150 frames)",
+    "ctx.decodeAudioData(<drums_hi>) -> buffer3<drums_hi>(2 ch, 66150 frames)",
+    "ctx.decodeAudioData(<other_hi>) -> buffer4<other_hi>(2 ch, 66150 frames)",
+    "ctx.decodeAudioData(<bass_sub>) -> buffer5<bass_sub>(1 ch, 66150 frames)",
+    "ctx.decodeAudioData(<drums_sub>) -> buffer6<drums_sub>(1 ch, 66150 frames)",
+    "ctx.decodeAudioData(<other_sub>) -> buffer7<other_sub>(1 ch, 66187 frames)",
+    "ctx.createBuffer(9, 66150, 44100) -> buffer8",
+    "buffer8.copyToChannel(buffer1.ch0[0..66150), 0)",
+    "buffer8.copyToChannel(buffer2.ch0[0..66150), 1)",
+    "buffer8.copyToChannel(buffer3.ch0[0..66150), 2)",
+    "buffer8.copyToChannel(buffer3.ch1[0..66150), 3)",
+    "buffer8.copyToChannel(buffer4.ch0[0..66150), 4)",
+    "buffer8.copyToChannel(buffer4.ch1[0..66150), 5)",
+    "buffer8.copyToChannel(buffer5.ch0[0..66150), 6)",
+    "buffer8.copyToChannel(buffer6.ch0[0..66150), 7)",
+    "buffer8.copyToChannel(buffer7.ch0[0..66150), 8)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "loadOriginal(original, 0.7)",
+   "log": [
+    "ctx.decodeAudioData(<original>) -> buffer9<original>(2 ch, 66150 frames)",
+    "gain5.gain.cancelScheduledValues(+0)",
+    "gain5.gain.setValueAtTime(1, +0)",
+    "gain5.gain.linearRampToValueAtTime(1, +0.000023)",
+    "gain6.gain.cancelScheduledValues(+0)",
+    "gain6.gain.setValueAtTime(0, +0)",
+    "gain6.gain.linearRampToValueAtTime(0, +0.000023)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "setListen(\"8d\")",
+   "log": [
+    "gain5.gain.cancelScheduledValues(+0)",
+    "gain5.gain.setValueAtTime(1, +0)",
+    "gain5.gain.linearRampToValueAtTime(1, +0.04)",
+    "gain6.gain.cancelScheduledValues(+0)",
+    "gain6.gain.setValueAtTime(0, +0)",
+    "gain6.gain.linearRampToValueAtTime(0, +0.04)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "setRoom(hall)",
+   "log": [
+    "ctx.decodeAudioData(<brir-hall>) -> buffer10<brir-hall>(2 ch, 2000 frames)",
+    "convolver1.buffer = buffer10<brir-hall>(2 ch, 2000 frames)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "setEq(eq-1)",
+   "log": [
+    "ctx.decodeAudioData(<eq-1>) -> buffer11<eq-1>(1 ch, 1025 frames)",
+    "ctx.createBuffer(2, 1025, 44100) -> buffer12",
+    "buffer12.copyToChannel(buffer11.ch0[0..1025), 0)",
+    "buffer12.copyToChannel(buffer11.ch0[0..1025), 1)",
+    "convolver2.buffer = buffer12(2 ch, 1025 frames)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "setParams(scene, 0.8)",
+   "log": [
+    "worklet1.port.postMessage(params: sources [vocals@0 offset 0 gain 1.375 send 1.375; bass@1 offset 0 gain 1.125 send 0; drums@2 offset -25 gain 0.530959 send 0.106192; drums@3 offset 25 gain 0.530959 send 0.106192; other@4 offset -15 gain 0.875 send 0.30625; other@5 offset 15 gain 0.875 send 0.30625], subGains [1.0625, 0.752192, 1.0625], rearCut 0.645187, motions 326 values checksum 20.6893, wet 9 values checksum -0.935501)",
+    "gain4.gain.setTargetAtTime(0.8, +0, 0.05)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "advance 0.05 s",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing false, listening 8d"
+  }
+ ],
+ "play, pause and resume": [
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source1",
+    "source1.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain7",
+    "gain7.gain.setValueAtTime(0, +0.06)",
+    "gain7.gain.linearRampToValueAtTime(1, +0.07)",
+    "source1.connect(gain7)",
+    "gain7.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source1.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source2",
+    "source2.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain8",
+    "gain8.gain.setValueAtTime(0, +0.06)",
+    "gain8.gain.linearRampToValueAtTime(1, +0.07)",
+    "source2.connect(gain8)",
+    "gain8.connect(gain6)",
+    "source2.start(+0.06, 0)",
+    "source1.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.3 s",
+   "log": [],
+   "worklet": "103 quanta, 83 audible (frames +2560..+13056), energy L/R/send = 1457.11, 1447.41, 7.1276, checksum -28.4713",
+   "after": "time 0.238957 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain7.gain.cancelScheduledValues(+0)",
+    "gain7.gain.setValueAtTime(1, +0)",
+    "gain7.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain8.gain.cancelScheduledValues(+0)",
+    "gain8.gain.setValueAtTime(1, +0)",
+    "gain8.gain.linearRampToValueAtTime(0, +0.015)",
+    "source1.onended = <handler>",
+    "source1.stop(+0.015)",
+    "source2.onended = <handler>",
+    "source2.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.238957 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [
+    "event: source1 ended",
+    "source1.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()",
+    "event: source2 ended",
+    "source2.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()"
+   ],
+   "worklet": "34 quanta, 6 audible (frames +0..+640), energy L/R/send = 42.0363, 32.8063, 0.0156579, checksum -1.35898",
+   "after": "time 0.238957 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "play() again",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source3",
+    "source3.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain9",
+    "gain9.gain.setValueAtTime(0, +0.06)",
+    "gain9.gain.linearRampToValueAtTime(1, +0.07)",
+    "source3.connect(gain9)",
+    "gain9.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0.238957)",
+    "source3.start(+0.06, 0.238957)",
+    "ctx.createBufferSource() -> source4",
+    "source4.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain10",
+    "gain10.gain.setValueAtTime(0, +0.06)",
+    "gain10.gain.linearRampToValueAtTime(1, +0.07)",
+    "source4.connect(gain10)",
+    "gain10.connect(gain6)",
+    "source4.start(+0.06, 0.238957)",
+    "source3.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.238957 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.065 s",
+   "log": [],
+   "worklet": "22 quanta, 2 audible (frames +2560..+2688), energy L/R/send = 1.22643, 1.34927, 0.000624859, checksum -0.277522",
+   "after": "time 0.242812 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause() in the middle of the fade-in",
+   "log": [
+    "gain9.gain.cancelScheduledValues(+0)",
+    "gain9.gain.setValueAtTime(0.385488, +0)",
+    "gain9.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain10.gain.cancelScheduledValues(+0)",
+    "gain10.gain.setValueAtTime(0.385488, +0)",
+    "gain10.gain.linearRampToValueAtTime(0, +0.015)",
+    "source3.onended = <handler>",
+    "source3.stop(+0.015)",
+    "source4.onended = <handler>",
+    "source4.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.242812 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [
+    "event: source3 ended",
+    "source3.disconnect()",
+    "gain9.disconnect()",
+    "gain10.disconnect()",
+    "event: source4 ended",
+    "source4.disconnect()",
+    "gain9.disconnect()",
+    "gain10.disconnect()"
+   ],
+   "worklet": "34 quanta, 6 audible (frames +0..+640), energy L/R/send = 6.48901, 4.87119, 0.00227287, checksum 0.180819",
+   "after": "time 0.242812 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "pause() while paused",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0.242812 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source5",
+    "source5.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain11",
+    "gain11.gain.setValueAtTime(0, +0.06)",
+    "gain11.gain.linearRampToValueAtTime(1, +0.07)",
+    "source5.connect(gain11)",
+    "gain11.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0.242812)",
+    "source5.start(+0.06, 0.242812)",
+    "ctx.createBufferSource() -> source6",
+    "source6.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain12",
+    "gain12.gain.setValueAtTime(0, +0.06)",
+    "gain12.gain.linearRampToValueAtTime(1, +0.07)",
+    "source6.connect(gain12)",
+    "gain12.connect(gain6)",
+    "source6.start(+0.06, 0.242812)",
+    "source5.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.242812 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "play() while playing",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0.242812 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [],
+   "worklet": "34 quanta, 14 audible (frames +2560..+4224), energy L/R/send = 292.396, 217.771, 0.0989955, checksum 0.0918668",
+   "after": "time 0.281497 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain11.gain.cancelScheduledValues(+0)",
+    "gain11.gain.setValueAtTime(1, +0)",
+    "gain11.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain12.gain.cancelScheduledValues(+0)",
+    "gain12.gain.setValueAtTime(1, +0)",
+    "gain12.gain.linearRampToValueAtTime(0, +0.015)",
+    "source5.onended = <handler>",
+    "source5.stop(+0.015)",
+    "source6.onended = <handler>",
+    "source6.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.281497 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "advance 0.05 s",
+   "log": [
+    "event: source5 ended",
+    "source5.disconnect()",
+    "gain11.disconnect()",
+    "gain12.disconnect()",
+    "event: source6 ended",
+    "source6.disconnect()",
+    "gain11.disconnect()",
+    "gain12.disconnect()"
+   ],
+   "worklet": "17 quanta, 6 audible (frames +0..+640), energy L/R/send = 45.889, 33.8436, 0.0158348, checksum -1.50538",
+   "after": "time 0.281497 / 1.5, playing false, listening 8d"
+  }
+ ],
+ "seek while playing and while paused": [
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source1",
+    "source1.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain7",
+    "gain7.gain.setValueAtTime(0, +0.06)",
+    "gain7.gain.linearRampToValueAtTime(1, +0.07)",
+    "source1.connect(gain7)",
+    "gain7.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source1.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source2",
+    "source2.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain8",
+    "gain8.gain.setValueAtTime(0, +0.06)",
+    "gain8.gain.linearRampToValueAtTime(1, +0.07)",
+    "source2.connect(gain8)",
+    "gain8.connect(gain6)",
+    "source2.start(+0.06, 0)",
+    "source1.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [],
+   "worklet": "69 quanta, 49 audible (frames +2560..+8704), energy L/R/send = 681.914, 768.741, 6.82093, checksum -0.320893",
+   "after": "time 0.140272 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "seek(0.9) while playing",
+   "log": [
+    "gain7.gain.cancelScheduledValues(+0)",
+    "gain7.gain.setValueAtTime(1, +0)",
+    "gain7.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain8.gain.cancelScheduledValues(+0)",
+    "gain8.gain.setValueAtTime(1, +0)",
+    "gain8.gain.linearRampToValueAtTime(0, +0.015)",
+    "source1.onended = <handler>",
+    "source1.stop(+0.015)",
+    "source2.onended = <handler>",
+    "source2.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)",
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source3",
+    "source3.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain9",
+    "gain9.gain.setValueAtTime(0, +0.06)",
+    "gain9.gain.linearRampToValueAtTime(1, +0.07)",
+    "source3.connect(gain9)",
+    "gain9.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0.9)",
+    "source3.start(+0.06, 0.9)",
+    "ctx.createBufferSource() -> source4",
+    "source4.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain10",
+    "gain10.gain.setValueAtTime(0, +0.06)",
+    "gain10.gain.linearRampToValueAtTime(1, +0.07)",
+    "source4.connect(gain10)",
+    "gain10.connect(gain6)",
+    "source4.start(+0.06, 0.9)",
+    "source3.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.9 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [
+    "event: source1 ended",
+    "source1.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()",
+    "event: source2 ended",
+    "source2.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()"
+   ],
+   "worklet": "69 quanta, 55 audible (frames +0..+8704), energy L/R/send = 695.482, 567.866, 0.42556, checksum 4.00273",
+   "after": "time 1.04027 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain9.gain.cancelScheduledValues(+0)",
+    "gain9.gain.setValueAtTime(1, +0)",
+    "gain9.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain10.gain.cancelScheduledValues(+0)",
+    "gain10.gain.setValueAtTime(1, +0)",
+    "gain10.gain.linearRampToValueAtTime(0, +0.015)",
+    "source3.onended = <handler>",
+    "source3.stop(+0.015)",
+    "source4.onended = <handler>",
+    "source4.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 1.04027 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "seek(0.3) while paused",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0.3 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "advance 0.05 s",
+   "log": [
+    "event: source3 ended",
+    "source3.disconnect()",
+    "gain9.disconnect()",
+    "gain10.disconnect()",
+    "event: source4 ended",
+    "source4.disconnect()",
+    "gain9.disconnect()",
+    "gain10.disconnect()"
+   ],
+   "worklet": "17 quanta, 6 audible (frames +0..+640), energy L/R/send = 27.5892, 20.2508, 0.0159927, checksum -2.22912",
+   "after": "time 0.3 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source5",
+    "source5.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain11",
+    "gain11.gain.setValueAtTime(0, +0.06)",
+    "gain11.gain.linearRampToValueAtTime(1, +0.07)",
+    "source5.connect(gain11)",
+    "gain11.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0.3)",
+    "source5.start(+0.06, 0.3)",
+    "ctx.createBufferSource() -> source6",
+    "source6.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain12",
+    "gain12.gain.setValueAtTime(0, +0.06)",
+    "gain12.gain.linearRampToValueAtTime(1, +0.07)",
+    "source6.connect(gain12)",
+    "gain12.connect(gain6)",
+    "source6.start(+0.06, 0.3)",
+    "source5.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.3 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [],
+   "worklet": "34 quanta, 14 audible (frames +2560..+4224), energy L/R/send = 205.838, 179.7, 0.0954534, checksum 1.3162",
+   "after": "time 0.338685 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "seek(-1) while playing",
+   "log": [
+    "gain11.gain.cancelScheduledValues(+0)",
+    "gain11.gain.setValueAtTime(1, +0)",
+    "gain11.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain12.gain.cancelScheduledValues(+0)",
+    "gain12.gain.setValueAtTime(1, +0)",
+    "gain12.gain.linearRampToValueAtTime(0, +0.015)",
+    "source5.onended = <handler>",
+    "source5.stop(+0.015)",
+    "source6.onended = <handler>",
+    "source6.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)",
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source7",
+    "source7.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain13",
+    "gain13.gain.setValueAtTime(0, +0.06)",
+    "gain13.gain.linearRampToValueAtTime(1, +0.07)",
+    "source7.connect(gain13)",
+    "gain13.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source7.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source8",
+    "source8.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain14",
+    "gain14.gain.setValueAtTime(0, +0.06)",
+    "gain14.gain.linearRampToValueAtTime(1, +0.07)",
+    "source8.connect(gain14)",
+    "gain14.connect(gain6)",
+    "source8.start(+0.06, 0)",
+    "source7.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [
+    "event: source5 ended",
+    "source5.disconnect()",
+    "gain11.disconnect()",
+    "gain12.disconnect()",
+    "event: source6 ended",
+    "source6.disconnect()",
+    "gain11.disconnect()",
+    "gain12.disconnect()"
+   ],
+   "worklet": "34 quanta, 20 audible (frames +0..+4224), energy L/R/send = 184.175, 198.094, 0.622, checksum 4.90382",
+   "after": "time 0.0386848 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "seek(99) while playing",
+   "log": [
+    "gain13.gain.cancelScheduledValues(+0)",
+    "gain13.gain.setValueAtTime(1, +0)",
+    "gain13.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain14.gain.cancelScheduledValues(+0)",
+    "gain14.gain.setValueAtTime(1, +0)",
+    "gain14.gain.linearRampToValueAtTime(0, +0.015)",
+    "source7.onended = <handler>",
+    "source7.stop(+0.015)",
+    "source8.onended = <handler>",
+    "source8.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)",
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source9",
+    "source9.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain15",
+    "gain15.gain.setValueAtTime(0, +0.06)",
+    "gain15.gain.linearRampToValueAtTime(1, +0.07)",
+    "source9.connect(gain15)",
+    "gain15.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source9.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source10",
+    "source10.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain16",
+    "gain16.gain.setValueAtTime(0, +0.06)",
+    "gain16.gain.linearRampToValueAtTime(1, +0.07)",
+    "source10.connect(gain16)",
+    "gain16.connect(gain6)",
+    "source10.start(+0.06, 0)",
+    "source9.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [
+    "event: source7 ended",
+    "source7.disconnect()",
+    "gain13.disconnect()",
+    "gain14.disconnect()",
+    "event: source8 ended",
+    "source8.disconnect()",
+    "gain13.disconnect()",
+    "gain14.disconnect()"
+   ],
+   "worklet": "34 quanta, 20 audible (frames +0..+4224), energy L/R/send = 178.845, 194.843, 0.712217, checksum 2.15847",
+   "after": "time 0.0386848 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain15.gain.cancelScheduledValues(+0)",
+    "gain15.gain.setValueAtTime(1, +0)",
+    "gain15.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain16.gain.cancelScheduledValues(+0)",
+    "gain16.gain.setValueAtTime(1, +0)",
+    "gain16.gain.linearRampToValueAtTime(0, +0.015)",
+    "source9.onended = <handler>",
+    "source9.stop(+0.015)",
+    "source10.onended = <handler>",
+    "source10.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.0386848 / 1.5, playing false, listening 8d"
+  }
+ ],
+ "drag the playhead (App.scrubStart / scrub / scrubEnd)": [
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source1",
+    "source1.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain7",
+    "gain7.gain.setValueAtTime(0, +0.06)",
+    "gain7.gain.linearRampToValueAtTime(1, +0.07)",
+    "source1.connect(gain7)",
+    "gain7.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source1.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source2",
+    "source2.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain8",
+    "gain8.gain.setValueAtTime(0, +0.06)",
+    "gain8.gain.linearRampToValueAtTime(1, +0.07)",
+    "source2.connect(gain8)",
+    "gain8.connect(gain6)",
+    "source2.start(+0.06, 0)",
+    "source1.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.25 s",
+   "log": [],
+   "worklet": "86 quanta, 66 audible (frames +2560..+10880), energy L/R/send = 1032.28, 1119.49, 6.97309, checksum -11.3803",
+   "after": "time 0.189615 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "scrubStart while playing: pause()",
+   "log": [
+    "gain7.gain.cancelScheduledValues(+0)",
+    "gain7.gain.setValueAtTime(1, +0)",
+    "gain7.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain8.gain.cancelScheduledValues(+0)",
+    "gain8.gain.setValueAtTime(1, +0)",
+    "gain8.gain.linearRampToValueAtTime(0, +0.015)",
+    "source1.onended = <handler>",
+    "source1.stop(+0.015)",
+    "source2.onended = <handler>",
+    "source2.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.189615 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "advance 0.3 s",
+   "log": [
+    "event: source1 ended",
+    "source1.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()",
+    "event: source2 ended",
+    "source2.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()"
+   ],
+   "worklet": "103 quanta, 6 audible (frames +0..+640), energy L/R/send = 49.6723, 43.1269, 0.017065, checksum -0.259393",
+   "after": "time 0.189615 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "scrubEnd: seek(1.0) then play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source3",
+    "source3.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain9",
+    "gain9.gain.setValueAtTime(0, +0.06)",
+    "gain9.gain.linearRampToValueAtTime(1, +0.07)",
+    "source3.connect(gain9)",
+    "gain9.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 1)",
+    "source3.start(+0.06, 1)",
+    "ctx.createBufferSource() -> source4",
+    "source4.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain10",
+    "gain10.gain.setValueAtTime(0, +0.06)",
+    "gain10.gain.linearRampToValueAtTime(1, +0.07)",
+    "source4.connect(gain10)",
+    "gain10.connect(gain6)",
+    "source4.start(+0.06, 1)",
+    "source3.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 1 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [],
+   "worklet": "69 quanta, 49 audible (frames +2560..+8704), energy L/R/send = 663.005, 546.056, 0.416326, checksum -8.78147",
+   "after": "time 1.14027 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain9.gain.cancelScheduledValues(+0)",
+    "gain9.gain.setValueAtTime(1, +0)",
+    "gain9.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain10.gain.cancelScheduledValues(+0)",
+    "gain10.gain.setValueAtTime(1, +0)",
+    "gain10.gain.linearRampToValueAtTime(0, +0.015)",
+    "source3.onended = <handler>",
+    "source3.stop(+0.015)",
+    "source4.onended = <handler>",
+    "source4.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 1.14027 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "advance 0.05 s",
+   "log": [
+    "event: source3 ended",
+    "source3.disconnect()",
+    "gain9.disconnect()",
+    "gain10.disconnect()",
+    "event: source4 ended",
+    "source4.disconnect()",
+    "gain9.disconnect()",
+    "gain10.disconnect()"
+   ],
+   "worklet": "17 quanta, 6 audible (frames +0..+640), energy L/R/send = 26.5408, 21.0982, 0.0160157, checksum -2.22313",
+   "after": "time 1.14027 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "scrubEnd while paused: seek(0.5)",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0.5 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "advance 0.05 s",
+   "log": [],
+   "worklet": "17 quanta, silent",
+   "after": "time 0.5 / 1.5, playing false, listening 8d"
+  }
+ ],
+ "switch between 8D and the original": [
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source1",
+    "source1.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain7",
+    "gain7.gain.setValueAtTime(0, +0.06)",
+    "gain7.gain.linearRampToValueAtTime(1, +0.07)",
+    "source1.connect(gain7)",
+    "gain7.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source1.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source2",
+    "source2.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain8",
+    "gain8.gain.setValueAtTime(0, +0.06)",
+    "gain8.gain.linearRampToValueAtTime(1, +0.07)",
+    "source2.connect(gain8)",
+    "gain8.connect(gain6)",
+    "source2.start(+0.06, 0)",
+    "source1.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [],
+   "worklet": "69 quanta, 49 audible (frames +2560..+8704), energy L/R/send = 681.914, 768.741, 6.82093, checksum -0.320893",
+   "after": "time 0.140272 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "setListen(\"original\")",
+   "log": [
+    "gain5.gain.cancelScheduledValues(+0)",
+    "gain5.gain.setValueAtTime(1, +0)",
+    "gain5.gain.linearRampToValueAtTime(0, +0.04)",
+    "gain6.gain.cancelScheduledValues(+0)",
+    "gain6.gain.setValueAtTime(0, +0)",
+    "gain6.gain.linearRampToValueAtTime(0.7, +0.04)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.140272 / 1.5, playing true, listening original"
+  },
+  {
+   "do": "advance 0.02 s",
+   "log": [],
+   "worklet": "7 quanta, 7 audible (frames +0..+768), energy L/R/send = 128.815, 139.845, 0.065562, checksum 3.43541",
+   "after": "time 0.16059 / 1.5, playing true, listening original"
+  },
+  {
+   "do": "setListen(\"8d\") in the middle of the crossfade",
+   "log": [
+    "gain5.gain.cancelScheduledValues(+0)",
+    "gain5.gain.setValueAtTime(0.492063, +0)",
+    "gain5.gain.linearRampToValueAtTime(1, +0.04)",
+    "gain6.gain.cancelScheduledValues(+0)",
+    "gain6.gain.setValueAtTime(0.355556, +0)",
+    "gain6.gain.linearRampToValueAtTime(0, +0.04)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.16059 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [],
+   "worklet": "34 quanta, 34 audible (frames +0..+4224), energy L/R/send = 826.197, 677.469, 0.305263, checksum 10.7766",
+   "after": "time 0.259274 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "setListen(\"original\")",
+   "log": [
+    "gain5.gain.cancelScheduledValues(+0)",
+    "gain5.gain.setValueAtTime(1, +0)",
+    "gain5.gain.linearRampToValueAtTime(0, +0.04)",
+    "gain6.gain.cancelScheduledValues(+0)",
+    "gain6.gain.setValueAtTime(0, +0)",
+    "gain6.gain.linearRampToValueAtTime(0.7, +0.04)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.259274 / 1.5, playing true, listening original"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [],
+   "worklet": "34 quanta, 34 audible (frames +0..+4224), energy L/R/send = 711.58, 606.39, 0.302869, checksum 1.86703",
+   "after": "time 0.357959 / 1.5, playing true, listening original"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain7.gain.cancelScheduledValues(+0)",
+    "gain7.gain.setValueAtTime(1, +0)",
+    "gain7.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain8.gain.cancelScheduledValues(+0)",
+    "gain8.gain.setValueAtTime(1, +0)",
+    "gain8.gain.linearRampToValueAtTime(0, +0.015)",
+    "source1.onended = <handler>",
+    "source1.stop(+0.015)",
+    "source2.onended = <handler>",
+    "source2.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.357959 / 1.5, playing false, listening original"
+  },
+  {
+   "do": "advance 0.05 s",
+   "log": [
+    "event: source1 ended",
+    "source1.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()",
+    "event: source2 ended",
+    "source2.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()"
+   ],
+   "worklet": "17 quanta, 6 audible (frames +0..+640), energy L/R/send = 34.6218, 32.0418, 0.0156886, checksum -4.07678",
+   "after": "time 0.357959 / 1.5, playing false, listening original"
+  },
+  {
+   "do": "setListen(\"8d\") while paused",
+   "log": [
+    "gain5.gain.cancelScheduledValues(+0)",
+    "gain5.gain.setValueAtTime(0, +0)",
+    "gain5.gain.linearRampToValueAtTime(1, +0.04)",
+    "gain6.gain.cancelScheduledValues(+0)",
+    "gain6.gain.setValueAtTime(0.7, +0)",
+    "gain6.gain.linearRampToValueAtTime(0, +0.04)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.357959 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source3",
+    "source3.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain9",
+    "gain9.gain.setValueAtTime(0, +0.06)",
+    "gain9.gain.linearRampToValueAtTime(1, +0.07)",
+    "source3.connect(gain9)",
+    "gain9.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0.357959)",
+    "source3.start(+0.06, 0.357959)",
+    "ctx.createBufferSource() -> source4",
+    "source4.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain10",
+    "gain10.gain.setValueAtTime(0, +0.06)",
+    "gain10.gain.linearRampToValueAtTime(1, +0.07)",
+    "source4.connect(gain10)",
+    "gain10.connect(gain6)",
+    "source4.start(+0.06, 0.357959)",
+    "source3.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.357959 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [],
+   "worklet": "34 quanta, 14 audible (frames +2560..+4224), energy L/R/send = 206.289, 186.499, 0.0998029, checksum -6.28346",
+   "after": "time 0.396644 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain9.gain.cancelScheduledValues(+0)",
+    "gain9.gain.setValueAtTime(1, +0)",
+    "gain9.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain10.gain.cancelScheduledValues(+0)",
+    "gain10.gain.setValueAtTime(1, +0)",
+    "gain10.gain.linearRampToValueAtTime(0, +0.015)",
+    "source3.onended = <handler>",
+    "source3.stop(+0.015)",
+    "source4.onended = <handler>",
+    "source4.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.396644 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "setListen(\"original\") before an original is loaded",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0 / 0, playing false, listening 8d"
+  }
+ ],
+ "change the room while playing": [
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source1",
+    "source1.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain7",
+    "gain7.gain.setValueAtTime(0, +0.06)",
+    "gain7.gain.linearRampToValueAtTime(1, +0.07)",
+    "source1.connect(gain7)",
+    "gain7.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source1.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source2",
+    "source2.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain8",
+    "gain8.gain.setValueAtTime(0, +0.06)",
+    "gain8.gain.linearRampToValueAtTime(1, +0.07)",
+    "source2.connect(gain8)",
+    "gain8.connect(gain6)",
+    "source2.start(+0.06, 0)",
+    "source1.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [],
+   "worklet": "69 quanta, 49 audible (frames +2560..+8704), energy L/R/send = 681.914, 768.741, 6.82093, checksum -0.320893",
+   "after": "time 0.140272 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "setRoom(room)",
+   "log": [
+    "ctx.decodeAudioData(<brir-room>) -> buffer13<brir-room>(2 ch, 2000 frames)",
+    "convolver1.buffer = buffer13<brir-room>(2 ch, 2000 frames)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.140272 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [],
+   "worklet": "34 quanta, 34 audible (frames +0..+4224), energy L/R/send = 775.198, 678.673, 0.306679, checksum 1.32746",
+   "after": "time 0.238957 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "setRoom(hall)",
+   "log": [
+    "ctx.decodeAudioData(<brir-hall>) -> buffer14<brir-hall>(2 ch, 2000 frames)",
+    "convolver1.buffer = buffer14<brir-hall>(2 ch, 2000 frames)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.238957 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.05 s",
+   "log": [],
+   "worklet": "17 quanta, 17 audible (frames +0..+2048), energy L/R/send = 443.936, 335.043, 0.152868, checksum -0.302113",
+   "after": "time 0.288299 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain7.gain.cancelScheduledValues(+0)",
+    "gain7.gain.setValueAtTime(1, +0)",
+    "gain7.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain8.gain.cancelScheduledValues(+0)",
+    "gain8.gain.setValueAtTime(1, +0)",
+    "gain8.gain.linearRampToValueAtTime(0, +0.015)",
+    "source1.onended = <handler>",
+    "source1.stop(+0.015)",
+    "source2.onended = <handler>",
+    "source2.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.288299 / 1.5, playing false, listening 8d"
+  }
+ ],
+ "update the EQ while playing": [
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source1",
+    "source1.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain7",
+    "gain7.gain.setValueAtTime(0, +0.06)",
+    "gain7.gain.linearRampToValueAtTime(1, +0.07)",
+    "source1.connect(gain7)",
+    "gain7.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source1.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source2",
+    "source2.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain8",
+    "gain8.gain.setValueAtTime(0, +0.06)",
+    "gain8.gain.linearRampToValueAtTime(1, +0.07)",
+    "source2.connect(gain8)",
+    "gain8.connect(gain6)",
+    "source2.start(+0.06, 0)",
+    "source1.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [],
+   "worklet": "69 quanta, 49 audible (frames +2560..+8704), energy L/R/send = 681.914, 768.741, 6.82093, checksum -0.320893",
+   "after": "time 0.140272 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "setEq(eq-2) (not awaited)",
+   "log": [
+    "ctx.decodeAudioData(<eq-2>) -> buffer13<eq-2>(1 ch, 1025 frames)",
+    "ctx.createBuffer(2, 1025, 44100) -> buffer14",
+    "buffer14.copyToChannel(buffer13.ch0[0..1025), 0)",
+    "buffer14.copyToChannel(buffer13.ch0[0..1025), 1)",
+    "convolver3.buffer = buffer14(2 ch, 1025 frames)",
+    "gain3.gain.cancelScheduledValues(+0)",
+    "gain3.gain.setValueAtTime(0, +0)",
+    "gain3.gain.linearRampToValueAtTime(1, +0.08)",
+    "gain2.gain.cancelScheduledValues(+0)",
+    "gain2.gain.setValueAtTime(1, +0)",
+    "gain2.gain.linearRampToValueAtTime(0, +0.08)",
+    "window.setTimeout(100 ms)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.140272 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.05 s",
+   "log": [],
+   "worklet": "17 quanta, 17 audible (frames +0..+2048), energy L/R/send = 350.365, 350.749, 0.152167, checksum 6.41036",
+   "after": "time 0.189615 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "setEq(eq-3) while eq-2 is still fading in (not awaited)",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0.189615 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [
+    "event: timer fired",
+    "event: setEq(eq-2) resolved",
+    "ctx.decodeAudioData(<eq-3>) -> buffer15<eq-3>(1 ch, 1025 frames)",
+    "ctx.createBuffer(2, 1025, 44100) -> buffer16",
+    "buffer16.copyToChannel(buffer15.ch0[0..1025), 0)",
+    "buffer16.copyToChannel(buffer15.ch0[0..1025), 1)",
+    "convolver2.buffer = buffer16(2 ch, 1025 frames)",
+    "gain2.gain.cancelScheduledValues(+0)",
+    "gain2.gain.setValueAtTime(0, +0)",
+    "gain2.gain.linearRampToValueAtTime(1, +0.08)",
+    "gain3.gain.cancelScheduledValues(+0)",
+    "gain3.gain.setValueAtTime(1, +0)",
+    "gain3.gain.linearRampToValueAtTime(0, +0.08)",
+    "window.setTimeout(100 ms)",
+    "event: timer fired",
+    "event: setEq(eq-3) while eq-2 is still fading in resolved"
+   ],
+   "worklet": "69 quanta, 69 audible (frames +0..+8704), energy L/R/send = 1527.32, 1267.33, 0.622388, checksum -5.71184",
+   "after": "time 0.389887 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [],
+   "worklet": "69 quanta, 69 audible (frames +0..+8704), energy L/R/send = 1056.37, 1018, 0.61078, checksum 20.8604",
+   "after": "time 0.590159 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "setEq(not audio) (not awaited)",
+   "log": [
+    "ctx.decodeAudioData(<8 bytes>) -> rejected",
+    "event: setEq(not audio) rejected: EncodingError: Unable to decode audio data"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.590159 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "setEq(eq-1) after the failed one (not awaited)",
+   "log": [
+    "ctx.decodeAudioData(<eq-1>) -> buffer17<eq-1>(1 ch, 1025 frames)",
+    "ctx.createBuffer(2, 1025, 44100) -> buffer18",
+    "buffer18.copyToChannel(buffer17.ch0[0..1025), 0)",
+    "buffer18.copyToChannel(buffer17.ch0[0..1025), 1)",
+    "convolver3.buffer = buffer18(2 ch, 1025 frames)",
+    "gain3.gain.cancelScheduledValues(+0)",
+    "gain3.gain.setValueAtTime(0, +0)",
+    "gain3.gain.linearRampToValueAtTime(1, +0.08)",
+    "gain2.gain.cancelScheduledValues(+0)",
+    "gain2.gain.setValueAtTime(1, +0)",
+    "gain2.gain.linearRampToValueAtTime(0, +0.08)",
+    "window.setTimeout(100 ms)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.590159 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [
+    "event: timer fired",
+    "event: setEq(eq-1) after the failed one resolved"
+   ],
+   "worklet": "69 quanta, 69 audible (frames +0..+8704), energy L/R/send = 949.308, 817.423, 0.619965, checksum -4.722",
+   "after": "time 0.790431 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain7.gain.cancelScheduledValues(+0)",
+    "gain7.gain.setValueAtTime(1, +0)",
+    "gain7.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain8.gain.cancelScheduledValues(+0)",
+    "gain8.gain.setValueAtTime(1, +0)",
+    "gain8.gain.linearRampToValueAtTime(0, +0.015)",
+    "source1.onended = <handler>",
+    "source1.stop(+0.015)",
+    "source2.onended = <handler>",
+    "source2.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.790431 / 1.5, playing false, listening 8d"
+  }
+ ],
+ "change scene parameters while playing": [
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source1",
+    "source1.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain7",
+    "gain7.gain.setValueAtTime(0, +0.06)",
+    "gain7.gain.linearRampToValueAtTime(1, +0.07)",
+    "source1.connect(gain7)",
+    "gain7.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source1.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source2",
+    "source2.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain8",
+    "gain8.gain.setValueAtTime(0, +0.06)",
+    "gain8.gain.linearRampToValueAtTime(1, +0.07)",
+    "source2.connect(gain8)",
+    "gain8.connect(gain6)",
+    "source2.start(+0.06, 0)",
+    "source1.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [],
+   "worklet": "69 quanta, 49 audible (frames +2560..+8704), energy L/R/send = 681.914, 768.741, 6.82093, checksum -0.320893",
+   "after": "time 0.140272 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "setParams(drums muted, vocals -6 dB, less reverb, 0.5)",
+   "log": [
+    "worklet1.port.postMessage(params: sources [vocals@0 offset 0 gain 0.689132 send 0.689132; bass@1 offset 0 gain 1.125 send 0; drums@2 offset -25 gain 0 send 0; drums@3 offset 25 gain 0 send 0; other@4 offset -15 gain 0.875 send 0.0875; other@5 offset 15 gain 0.875 send 0.0875], subGains [1.0625, 0, 1.0625], rearCut 0.292054, motions 326 values checksum 20.6893, wet 9 values checksum -0.935501)",
+    "gain4.gain.setTargetAtTime(0.5, +0, 0.05)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.140272 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [],
+   "worklet": "34 quanta, 34 audible (frames +0..+4224), energy L/R/send = 628.71, 503.896, 0.092021, checksum -0.545635",
+   "after": "time 0.238957 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "setParams(first scene, 0.8)",
+   "log": [
+    "worklet1.port.postMessage(params: sources [vocals@0 offset 0 gain 1.375 send 1.375; bass@1 offset 0 gain 1.125 send 0; drums@2 offset -25 gain 0.530959 send 0.106192; drums@3 offset 25 gain 0.530959 send 0.106192; other@4 offset -15 gain 0.875 send 0.30625; other@5 offset 15 gain 0.875 send 0.30625], subGains [1.0625, 0.752192, 1.0625], rearCut 0.645187, motions 326 values checksum 20.6893, wet 9 values checksum -0.935501)",
+    "gain4.gain.setTargetAtTime(0.8, +0, 0.05)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.238957 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [],
+   "worklet": "34 quanta, 34 audible (frames +0..+4224), energy L/R/send = 742.12, 601.568, 0.276465, checksum -10.5081",
+   "after": "time 0.337642 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain7.gain.cancelScheduledValues(+0)",
+    "gain7.gain.setValueAtTime(1, +0)",
+    "gain7.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain8.gain.cancelScheduledValues(+0)",
+    "gain8.gain.setValueAtTime(1, +0)",
+    "gain8.gain.linearRampToValueAtTime(0, +0.015)",
+    "source1.onended = <handler>",
+    "source1.stop(+0.015)",
+    "source2.onended = <handler>",
+    "source2.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.337642 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "setParams(drums muted, ...) while paused",
+   "log": [
+    "worklet1.port.postMessage(params: sources [vocals@0 offset 0 gain 0.689132 send 0.689132; bass@1 offset 0 gain 1.125 send 0; drums@2 offset -25 gain 0 send 0; drums@3 offset 25 gain 0 send 0; other@4 offset -15 gain 0.875 send 0.0875; other@5 offset 15 gain 0.875 send 0.0875], subGains [1.0625, 0, 1.0625], rearCut 0.292054, motions 326 values checksum 20.6893, wet 9 values checksum -0.935501)",
+    "gain4.gain.setTargetAtTime(0.5, +0, 0.05)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.337642 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source3",
+    "source3.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain9",
+    "gain9.gain.setValueAtTime(0, +0.06)",
+    "gain9.gain.linearRampToValueAtTime(1, +0.07)",
+    "source3.connect(gain9)",
+    "gain9.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0.337642)",
+    "source3.start(+0.06, 0.337642)",
+    "ctx.createBufferSource() -> source4",
+    "source4.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain10",
+    "gain10.gain.setValueAtTime(0, +0.06)",
+    "gain10.gain.linearRampToValueAtTime(1, +0.07)",
+    "source4.connect(gain10)",
+    "gain10.connect(gain6)",
+    "source4.start(+0.06, 0.337642)",
+    "source3.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.337642 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [
+    "event: source1 ended",
+    "source1.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()",
+    "event: source2 ended",
+    "source2.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()"
+   ],
+   "worklet": "34 quanta, 20 audible (frames +0..+4224), energy L/R/send = 197.677, 164.272, 0.0362075, checksum 3.50341",
+   "after": "time 0.376327 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain9.gain.cancelScheduledValues(+0)",
+    "gain9.gain.setValueAtTime(1, +0)",
+    "gain9.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain10.gain.cancelScheduledValues(+0)",
+    "gain10.gain.setValueAtTime(1, +0)",
+    "gain10.gain.linearRampToValueAtTime(0, +0.015)",
+    "source3.onended = <handler>",
+    "source3.stop(+0.015)",
+    "source4.onended = <handler>",
+    "source4.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.376327 / 1.5, playing false, listening 8d"
+  }
+ ],
+ "play to the end, then play again": [
+  {
+   "do": "seek(1.3)",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 1.3 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source1",
+    "source1.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain7",
+    "gain7.gain.setValueAtTime(0, +0.06)",
+    "gain7.gain.linearRampToValueAtTime(1, +0.07)",
+    "source1.connect(gain7)",
+    "gain7.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 1.3)",
+    "source1.start(+0.06, 1.3)",
+    "ctx.createBufferSource() -> source2",
+    "source2.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain8",
+    "gain8.gain.setValueAtTime(0, +0.06)",
+    "gain8.gain.linearRampToValueAtTime(1, +0.07)",
+    "source2.connect(gain8)",
+    "gain8.connect(gain6)",
+    "source2.start(+0.06, 1.3)",
+    "source1.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 1.3 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.4 s",
+   "log": [
+    "event: source1 ended",
+    "source1.disconnect()",
+    "source2.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()",
+    "event: engine.onEnded()",
+    "event: source2 ended"
+   ],
+   "worklet": "138 quanta, 70 audible (frames +2560..+11392), energy L/R/send = 998.182, 861.127, 0.595244, checksum 6.91582",
+   "after": "time 1.5 / 1.5, playing false, listening 8d"
+  },
+  {
+   "do": "play() after the song ended",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source3",
+    "source3.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain9",
+    "gain9.gain.setValueAtTime(0, +0.06)",
+    "gain9.gain.linearRampToValueAtTime(1, +0.07)",
+    "source3.connect(gain9)",
+    "gain9.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source3.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source4",
+    "source4.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain10",
+    "gain10.gain.setValueAtTime(0, +0.06)",
+    "gain10.gain.linearRampToValueAtTime(1, +0.07)",
+    "source4.connect(gain10)",
+    "gain10.connect(gain6)",
+    "source4.start(+0.06, 0)",
+    "source3.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.1 s",
+   "log": [],
+   "worklet": "34 quanta, 14 audible (frames +2560..+4224), energy L/R/send = 153.689, 165.672, 0.605906, checksum -0.0878349",
+   "after": "time 0.0386848 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain9.gain.cancelScheduledValues(+0)",
+    "gain9.gain.setValueAtTime(1, +0)",
+    "gain9.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain10.gain.cancelScheduledValues(+0)",
+    "gain10.gain.setValueAtTime(1, +0)",
+    "gain10.gain.linearRampToValueAtTime(0, +0.015)",
+    "source3.onended = <handler>",
+    "source3.stop(+0.015)",
+    "source4.onended = <handler>",
+    "source4.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.0386848 / 1.5, playing false, listening 8d"
+  }
+ ],
+ "load another song while playing": [
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source1",
+    "source1.buffer = buffer8(9 ch, 66150 frames)",
+    "ctx.createGain() -> gain7",
+    "gain7.gain.setValueAtTime(0, +0.06)",
+    "gain7.gain.linearRampToValueAtTime(1, +0.07)",
+    "source1.connect(gain7)",
+    "gain7.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source1.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source2",
+    "source2.buffer = buffer9<original>(2 ch, 66150 frames)",
+    "ctx.createGain() -> gain8",
+    "gain8.gain.setValueAtTime(0, +0.06)",
+    "gain8.gain.linearRampToValueAtTime(1, +0.07)",
+    "source2.connect(gain8)",
+    "gain8.connect(gain6)",
+    "source2.start(+0.06, 0)",
+    "source1.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [],
+   "worklet": "69 quanta, 49 audible (frames +2560..+8704), energy L/R/send = 681.914, 768.741, 6.82093, checksum -0.320893",
+   "after": "time 0.140272 / 1.5, playing true, listening 8d"
+  },
+  {
+   "do": "loadStems(song B)",
+   "log": [
+    "gain7.gain.cancelScheduledValues(+0)",
+    "gain7.gain.setValueAtTime(1, +0)",
+    "gain7.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain8.gain.cancelScheduledValues(+0)",
+    "gain8.gain.setValueAtTime(1, +0)",
+    "gain8.gain.linearRampToValueAtTime(0, +0.015)",
+    "source1.onended = <handler>",
+    "source1.stop(+0.015)",
+    "source2.onended = <handler>",
+    "source2.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)",
+    "ctx.decodeAudioData(<vocals_hi>) -> buffer13<vocals_hi>(1 ch, 44105 frames)",
+    "ctx.decodeAudioData(<bass_hi>) -> buffer14<bass_hi>(1 ch, 44100 frames)",
+    "ctx.decodeAudioData(<drums_hi>) -> buffer15<drums_hi>(2 ch, 44100 frames)",
+    "ctx.decodeAudioData(<other_hi>) -> buffer16<other_hi>(2 ch, 44100 frames)",
+    "ctx.decodeAudioData(<bass_sub>) -> buffer17<bass_sub>(1 ch, 44100 frames)",
+    "ctx.decodeAudioData(<drums_sub>) -> buffer18<drums_sub>(1 ch, 44100 frames)",
+    "ctx.decodeAudioData(<other_sub>) -> buffer19<other_sub>(1 ch, 44137 frames)",
+    "ctx.createBuffer(9, 44100, 44100) -> buffer20",
+    "buffer20.copyToChannel(buffer13.ch0[0..44100), 0)",
+    "buffer20.copyToChannel(buffer14.ch0[0..44100), 1)",
+    "buffer20.copyToChannel(buffer15.ch0[0..44100), 2)",
+    "buffer20.copyToChannel(buffer15.ch1[0..44100), 3)",
+    "buffer20.copyToChannel(buffer16.ch0[0..44100), 4)",
+    "buffer20.copyToChannel(buffer16.ch1[0..44100), 5)",
+    "buffer20.copyToChannel(buffer17.ch0[0..44100), 6)",
+    "buffer20.copyToChannel(buffer18.ch0[0..44100), 7)",
+    "buffer20.copyToChannel(buffer19.ch0[0..44100), 8)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1, playing false, listening 8d"
+  },
+  {
+   "do": "loadOriginal(song B, 0.5)",
+   "log": [
+    "ctx.decodeAudioData(<original>) -> buffer21<original>(2 ch, 44100 frames)",
+    "gain5.gain.cancelScheduledValues(+0)",
+    "gain5.gain.setValueAtTime(1, +0)",
+    "gain5.gain.linearRampToValueAtTime(1, +0.000023)",
+    "gain6.gain.cancelScheduledValues(+0)",
+    "gain6.gain.setValueAtTime(0, +0)",
+    "gain6.gain.linearRampToValueAtTime(0, +0.000023)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1, playing false, listening 8d"
+  },
+  {
+   "do": "setParams(song B, 0.6)",
+   "log": [
+    "worklet1.port.postMessage(params: sources [vocals@0 offset 0 gain 1.375 send 1.375; bass@1 offset 0 gain 1.125 send 0; drums@2 offset -25 gain 0.530959 send 0.106192; drums@3 offset 25 gain 0.530959 send 0.106192; other@4 offset -15 gain 0.875 send 0.30625; other@5 offset 15 gain 0.875 send 0.30625], subGains [1.0625, 0.752192, 1.0625], rearCut 0.645187, motions 326 values checksum 20.6893, wet 9 values checksum -0.935501)",
+    "gain4.gain.setTargetAtTime(0.6, +0, 0.05)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1, playing false, listening 8d"
+  },
+  {
+   "do": "advance 0.05 s",
+   "log": [
+    "event: source1 ended",
+    "source1.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()",
+    "event: source2 ended",
+    "source2.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()"
+   ],
+   "worklet": "17 quanta, 6 audible (frames +0..+640), energy L/R/send = 27.5897, 33.6023, 0.0160122, checksum 1.72496",
+   "after": "time 0 / 1, playing false, listening 8d"
+  },
+  {
+   "do": "play()",
+   "log": [
+    "ctx.resume()",
+    "ctx.createBufferSource() -> source3",
+    "source3.buffer = buffer20(9 ch, 44100 frames)",
+    "ctx.createGain() -> gain9",
+    "gain9.gain.setValueAtTime(0, +0.06)",
+    "gain9.gain.linearRampToValueAtTime(1, +0.07)",
+    "source3.connect(gain9)",
+    "gain9.connect(worklet1)",
+    "worklet1.port.postMessage(start: startFrame +2646, songOffset 0)",
+    "source3.start(+0.06, 0)",
+    "ctx.createBufferSource() -> source4",
+    "source4.buffer = buffer21<original>(2 ch, 44100 frames)",
+    "ctx.createGain() -> gain10",
+    "gain10.gain.setValueAtTime(0, +0.06)",
+    "gain10.gain.linearRampToValueAtTime(1, +0.07)",
+    "source4.connect(gain10)",
+    "gain10.connect(gain6)",
+    "source4.start(+0.06, 0)",
+    "source3.onended = <handler>"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 1, playing true, listening 8d"
+  },
+  {
+   "do": "advance 0.2 s",
+   "log": [],
+   "worklet": "69 quanta, 49 audible (frames +2560..+8704), energy L/R/send = 661.093, 744.776, 6.63682, checksum 2.55563",
+   "after": "time 0.140272 / 1, playing true, listening 8d"
+  },
+  {
+   "do": "pause()",
+   "log": [
+    "gain9.gain.cancelScheduledValues(+0)",
+    "gain9.gain.setValueAtTime(1, +0)",
+    "gain9.gain.linearRampToValueAtTime(0, +0.015)",
+    "gain10.gain.cancelScheduledValues(+0)",
+    "gain10.gain.setValueAtTime(1, +0)",
+    "gain10.gain.linearRampToValueAtTime(0, +0.015)",
+    "source3.onended = <handler>",
+    "source3.stop(+0.015)",
+    "source4.onended = <handler>",
+    "source4.stop(+0.015)",
+    "worklet1.port.postMessage(stop: stopFrame +662)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0.140272 / 1, playing false, listening 8d"
+  }
+ ],
+ "calls before the engine is ready": [
+  {
+   "do": "setParams before init",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0 / 0, playing false, listening 8d, threw: Audio engine is not initialised"
+  },
+  {
+   "do": "play() before init",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0 / 0, playing false, listening 8d"
+  },
+  {
+   "do": "pause() before init",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0 / 0, playing false, listening 8d"
+  },
+  {
+   "do": "init(hrtf)",
+   "log": [
+    "audioWorklet.addModule(<worklet module>)",
+    "new AudioWorkletNode(\"orbit8d-binaural\", {\"numberOfInputs\":1,\"numberOfOutputs\":2,\"outputChannelCount\":[2,1],\"channelCount\":9,\"channelCountMode\":\"explicit\",\"channelInterpretation\":\"discrete\"}) -> worklet1",
+    "worklet1.connect(gain1, 0)",
+    "worklet1.connect(convolver1, 1)",
+    "worklet1.port.postMessage(init: table 44100 Hz, 48 taps, 12 az x 5 el, 5760 values, checksum 12.8634)"
+   ],
+   "worklet": "no quanta",
+   "after": "time 0 / 0, playing false, listening 8d"
+  },
+  {
+   "do": "play() without a song",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0 / 0, playing false, listening 8d"
+  },
+  {
+   "do": "seek(1) without a song",
+   "log": [],
+   "worklet": "no quanta",
+   "after": "time 0 / 0, playing false, listening 8d"
+  }
+ ]
+}
