@@ -130,7 +130,7 @@ backend/orbit8d/
   jobs/       the add / export / delete use cases, job queue, record store, explicit state machines,
               on-disk layout, stem and preview files
   separate/   Demucs stem separation and model download
-  media/      ffmpeg wrapper (input whitelist, encoding, cover art), chunked audio file I/O
+  media/      ffmpeg wrapper (input whitelist, encoding, cover art), chunked audio file I/O, SOFA reader
   engine/     orbit formulas, timeline, HRTF, block renderer, reverb, mastering, tone correction,
               tempo, section detection, auto choreography, scene model, the nine sources,
               per-scene mixdown, analysis, segment-by-segment processing (bounded memory)

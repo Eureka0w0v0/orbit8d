@@ -15,9 +15,9 @@ from orbit8d.api.routes_assets import assets_router
 from orbit8d.api.routes_exports import exports_router
 from orbit8d.api.routes_projects import projects_router
 from orbit8d.api.routes_scene import scene_router
-from orbit8d.assets import ensure_hrtf_sofa, prune_stale_assets
+from orbit8d.assets import ensure_hrtf_sofa, load_hrtf_grid, prune_stale_assets
 from orbit8d.config import REPO_ROOT, SAMPLE_RATE, Settings
-from orbit8d.engine.hrtf import load_grid, to_bytes
+from orbit8d.engine.hrtf import to_bytes
 from orbit8d.engine.mixdown import Renderer
 from orbit8d.jobs.songs import Songs
 from orbit8d.jobs.store import Store
@@ -42,7 +42,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         grid = await run_in_threadpool(
-            load_grid, ensure_hrtf_sofa(settings.assets_dir), settings.assets_dir, SAMPLE_RATE
+            load_hrtf_grid, ensure_hrtf_sofa(settings.assets_dir), settings.assets_dir, SAMPLE_RATE
         )
         renderer = Renderer(grid)
         runner = JobRunner(store, renderer, separator)

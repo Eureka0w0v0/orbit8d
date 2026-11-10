@@ -7,11 +7,14 @@ from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from orbit8d.assets import prune_stale_assets
+from orbit8d.assets import load_hrtf_grid, prune_stale_assets
 from orbit8d.download import AssetError, download
+from orbit8d.engine.hrtf import to_bytes
 from orbit8d.separate.model import LOCAL_DIR, ModelDownloadError, bag_progress, model_files
+from tests.conftest import SR, write_sofa
 
 PAYLOAD = bytes(range(256)) * 9000  # 约 2.3 MB：会分好几块下载
 
@@ -137,6 +140,19 @@ def test_model_download_failure_has_its_own_error_code(server, tmp_path):
 )
 def test_separation_progress_counts_models_and_segments(event, expected):
     assert bag_progress(event, 1000) == pytest.approx(expected)
+
+
+def test_the_hrtf_grid_is_built_from_the_sofa_file_once_and_then_read_from_the_cache(tmp_path: Path):
+    sofa, cache_dir = tmp_path / "small.sofa", tmp_path / "assets"
+    cache_dir.mkdir()
+    write_sofa(sofa)
+    built = load_hrtf_grid(sofa, cache_dir, SR)
+    assert [p.name for p in cache_dir.iterdir()] == [f"hrtf_{SR}.bin"]  # 写完整才改名，不留临时文件
+    assert (cache_dir / f"hrtf_{SR}.bin").read_bytes() == to_bytes(built)
+    sofa.unlink()  # 有缓存就不再碰 SOFA 文件
+    cached = load_hrtf_grid(sofa, cache_dir, SR)
+    assert cached.sample_rate == built.sample_rate and cached.az_step_deg == built.az_step_deg
+    assert np.array_equal(cached.el_nodes, built.el_nodes) and np.array_equal(cached.data, built.data)
 
 
 def test_prune_keeps_current_assets(tmp_path: Path):

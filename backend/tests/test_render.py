@@ -17,6 +17,7 @@ from orbit8d.engine.render import (
     rear_shelf,
     render_path,
 )
+from orbit8d.media.sofa import read_sofa
 
 SR = 44100
 SOFA = load_settings().assets_dir / HRTF_FILE
@@ -97,7 +98,7 @@ def test_rear_shelf_only_darkens_highs_when_behind():
 @pytest.mark.slow
 def test_moving_source_is_insensitive_to_block_size():
     """方向逐块切换不产生杂音：默认块长与 16 采样块的差异应远低于可闻阈。"""
-    g = from_sofa(SOFA, SR)
+    g = from_sofa(read_sofa(SOFA), SR)
     x = np.random.default_rng(4).standard_normal(SR * 3) * 0.1
     outs = []
     for block in (BLOCK, 16):

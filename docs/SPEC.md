@@ -40,9 +40,9 @@ web/（Vite + TypeScript + Three.js，无 UI 框架）
 backend/orbit8d/（Python 3.12 + FastAPI）
   api/         HTTP 接口：app（组装、启动流程、托管前端构建产物）、guards（Host / 跨站防护、统一的错误应答）、routes_*（按领域分的路由）、state（启动后才建好的对象）
   jobs/        songs（收歌、排导出、删歌：查状态 + 改记录 + 排任务，在存储锁里一起做）、worker（单工位任务队列）、store（记录的文件存储，原子写）、states（显式状态机）、layout（磁盘布局，只算路径）、stems（分轨与试听文件的读写、WAV → FLAC 迁移）
-  assets.py    外部数据的下载与校验入口（HRTF 数据集；分轨模型经 separate/model；`make assets`）；混响冲激响应缓存文件的命名、旧缓存清理
+  assets.py    外部数据的下载与校验入口（HRTF 数据集；分轨模型经 separate/model；`make assets`）；由它们算出来的缓存文件：HRTF 表（`hrtf_44100.bin`）、混响冲激响应的命名、旧缓存清理
   separate/    Demucs 分轨；分轨模型文件（model：先找 HuggingFace 缓存，缺了才下载并校验 sha256）
-  media/       ffmpeg 探测、解码、编码（参数列表调用，不经 shell）；音频文件的分段读写（audiofile）
+  media/       ffmpeg 探测、解码、编码（参数列表调用，不经 shell）；音频文件的分段读写（audiofile）；读 SOFA 文件里的 HRTF 测量数据（sofa）
   engine/      hrtf / orbit / timeline / render / reverb / master / tone / tempo / structure / choreo / scene / sources（9 路声源）/ mixdown（按场景渲染到母带）/ analysis（分析）/ chunks（分段处理）
   download.py  下载到 .part → 校验 sha256 → 原子改名（assets 与 separate/model 共用）
   config.py、errors.py、logging_setup.py   运行配置、带错误码的异常、结构化日志
@@ -50,7 +50,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）；c
 ```
 
 依赖方向：上层只能依赖下层，模块之间没有环，也不许用函数内 import 把环藏起来。“谁可以依赖谁”的两张表写在测试里（`backend/tests/test_architecture.py`、`web/src/architecture.test.ts`：只读源码里的 import，不执行模块），具体到每个单元以表为准；新增单元或新增方向要先改表。
-- 后端自上而下：`__main__`（启动）→ `api` → `assets`、`jobs` → `separate`、`media` → `engine`；`download`、`config`、`errors`、`logging_setup` 是最底下的小模块。`engine` 不依赖项目里的任何其他包；`jobs` 不依赖 `api`、`assets`、`separate`（分轨器由启动处传进来）；入口层 `api` 不拿存储锁。
+- 后端自上而下：`__main__`（启动）→ `api` → `assets`、`jobs` → `separate`、`media` → `engine`；`download`、`config`、`errors`、`logging_setup` 是最底下的小模块。`engine` 是纯计算：不依赖项目里的任何其他包，也不 import 读写文件、起进程、访问网络的库（数据由外层读好传进来）；`jobs` 不依赖 `api`、`assets`、`separate`（分轨器由启动处传进来）；入口层 `api` 不拿存储锁。
 - 前端自上而下：`app` → `session`、`ui`、`scene`、`audio` → `model`、`orbit` → `types`；`i18n`、`api.ts` 与 `types.ts` 同在底层。`ui`、`scene`、`audio` 互不依赖；`session` 只用 `audio`、`model`、`types`（定时器、取数、保存这些副作用由 `app.ts` 传进去，所以不用浏览器环境就能测）；正式代码不依赖测试代码。
 
 单一真理源：HRTF 表、混响冲激响应（BRIR）、按场景的补偿 EQ、每轨校准增益、试听总增益、自动编排全部由后台生成，前端下载同一份使用。
@@ -159,7 +159,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）；c
 
 ### 5.6 HRTF 数据
 - 来源：TH Köln Neumann KU100 `HRIR_FULL2DEG.sofa`（sofacoustics.org，sha256 `d3671e68…5ddb7`），48 kHz、128 点，89 档仰角 × 180 档方位（2°）。
-- 处理：SOFA 逆时针方位转为顺时针索引 → 重采样到 44.1 kHz → 补零到 128 点 → 按水平一圈平均每耳能量归一为 1。
+- 处理：SOFA 逆时针方位转为顺时针索引 → 重采样到 44.1 kHz → 补零到 128 点 → 按水平一圈平均每耳能量归一为 1。`media/sofa.py` 只把文件里的数组读出来，换算在 `engine/hrtf.py`（纯函数），算好的表由 `assets.py` 缓存成 `hrtf_44100.bin`（先写临时文件再改名），之后启动直接读缓存。
 - 二进制格式 `hrtf.bin`：`"O8DH"` + uint32 头长 + JSON 头 `{version, sample_rate, taps, az_step_deg, n_az, el_nodes, layout:"el,az,ear,tap"}` + float32 数据（小端）。
 
 ### 5.7 分段处理（`engine/chunks.py`）
@@ -262,6 +262,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）；c
 | engine.structure | 音量起伏：相对最响处、静音压到 −60、不满一格也算一格 | 逐点断言 |
 | api | 场景存取：未保存 404、保存后原样取回、不合法 422 且不覆盖、超大 413、跨站 403 | 状态码与内容 |
 | engine.hrtf | 网格点插值 = 原始 IR；90° 两耳时间差；左右对称 | < 1e-9；0.62–0.70 ms；镜像能量差 < 1.5 dB |
+| media.sofa / engine.hrtf / assets | 合成的小 SOFA 文件：逆时针方位 → 顺时针索引、水平一圈归一、补零；先放右耳的文件得到同一张表；缺方向的文件按文件名报错；48 kHz 的测量数据重采样并截到 128 点；HRTF 表只建一次、之后读缓存、不留临时文件 | 逐项断言 |
 | engine.render | 固定方向与直接卷积；块 32 vs 16 | < −100 dB；< −45 dB |
 | engine.mixdown | 超低频正前方；时长 | <100 Hz 两耳相关 > 0.999；样本数相等 |
 | engine.master | 限幅后真峰值 | ≤ −1.0 dBTP |
@@ -279,7 +280,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）；c
 | web audio core | 改音量 20 ms 逐块过渡；静音后尾巴放完严格为 0；取消静音 = 从干净状态渲染 | 相邻块电平比 > 0.85；== 0；逐样本相等 |
 | web audio transport / ui phase / scene redraw | 播放、停止按帧号生效（跳转先停后起）；界面阶段新跳转；按需重画判定 | 逐项断言 |
 | 契约（`tests/test_contract.py`、`web/src/contract.test.ts`） | `shared/golden/contract.json` 由后端常量生成：音轨、形状、房间、小节选项、导出格式、响度、两个状态枚举、子步骤、9 声道顺序与试听文件 → 声道表、采样率、停顿的减速时长、三层的一键高度、各参数上限、记录字段、全部错误码、场景参数表。后端断言重新生成的结果与已提交文件一致；前端断言 TS 常量、类型的字段清单、`STEM_LAYOUT`、i18n 的错误码表与它一致 | 逐项相等（有意改契约时重新生成并在提交里写明） |
-| 依赖方向（`tests/test_architecture.py`、`web/src/architecture.test.ts`） | 读每个源文件的 import：各单元只依赖表里允许的单元、没有循环依赖；后端另查没有函数内的项目内 import、`api` 不拿存储锁；前端另查正式代码不依赖测试代码 | 违规清单为空（§3） |
+| 依赖方向（`tests/test_architecture.py`、`web/src/architecture.test.ts`） | 读每个源文件的 import：各单元只依赖表里允许的单元、没有循环依赖；后端另查没有函数内的项目内 import、`api` 不拿存储锁、`engine` 不 import 读写文件 / 起进程 / 访问网络的库；前端另查正式代码不依赖测试代码 | 违规清单为空（§3） |
 | jobs.store | 歌名与导出文件名的来历、文件名清理；旧版写的项目记录读得出来且原样写回；导出记录里从没用过的 `progress` 读的时候丢掉；缺的键用默认值、不认识的键忽略 | 逐项断言 |
 | api | 工位正忙时重新导入一首失败过的歌；请求校验失败的应答 | 返回的记录已是 UPLOADED、旧错误已清；422 且响应体是 `{code: INVALID_REQUEST, message}` |
 | web session | 自动保存（防抖、只存最后一次、失败重试、重试期间又改、过期的应答不算、换歌前 flush、删歌没删成时改动还在）；EQ 跟随场景（250 ms 防抖、只用最后一次结果、房间缓存、失败保留旧 EQ）；导出的等待（轮询、幂等命中、失败、取消后不再更新界面也不下载）；歌的上下文与歌名 | 假定时器 + 假接口，逐步断言 |

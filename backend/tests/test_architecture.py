@@ -18,11 +18,28 @@ ALLOWED: dict[str, frozenset[str]] = {
     "engine": frozenset(),
     "media": frozenset({"engine", "errors"}),
     "separate": frozenset({"download", "errors"}),
-    "assets": frozenset({"config", "download", "engine", "separate"}),
+    "assets": frozenset({"config", "download", "engine", "media", "separate"}),
     "jobs": frozenset({"config", "engine", "errors", "logging_setup", "media"}),
     "api": frozenset({ROOT, "assets", "config", "engine", "jobs", "media"}),
     "__main__": frozenset({"api", "config", "logging_setup", "separate"}),
 }
+
+# 核心（engine）是纯计算：读写文件、起进程、访问网络都在外层做好，再把数据传进来。
+ENGINE_FORBIDDEN = frozenset(
+    {
+        "h5py",
+        "soundfile",
+        "pathlib",
+        "os",
+        "io",
+        "shutil",
+        "tempfile",
+        "subprocess",
+        "socket",
+        "urllib",
+        "http",
+    }
+)
 
 
 def module_name(path: Path) -> str:
@@ -125,6 +142,27 @@ def test_modules_have_no_import_cycles():
 
     cycles = [cycle for module in graph if (cycle := visit(module, ()))]
     assert cycles == []
+
+
+def test_the_engine_does_no_io():
+    """engine 里不 import 读写文件、起进程、访问网络的库（SPEC §3）：这样核心逻辑不用真实文件就能测，
+    也能被别的入口复用。SOFA 文件由 media/sofa.py 读，缓存由 assets.py 管。"""
+    offending = []
+    for module, path in MODULES.items():
+        if unit_of(module) != "engine":
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level:
+                names = [node.module or ""]
+            offending += [
+                f"{path.relative_to(PACKAGE.parent)}:{node.lineno} imports {name}"
+                for name in names
+                if name.split(".")[0] in ENGINE_FORBIDDEN
+            ]
+    assert offending == []
 
 
 def test_the_api_layer_never_takes_the_store_lock():

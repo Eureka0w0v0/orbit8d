@@ -4,6 +4,7 @@ import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pytest
 import soundfile as sf
@@ -50,6 +51,30 @@ def write_song(path: Path, seconds: float = 6.0, seed: int = 0) -> Path:
     x = np.stack([melody + beat + bass, melody + beat + bass], axis=1) + rng.standard_normal((n, 2)) * 0.02
     sf.write(path, x, SR, subtype="PCM_16")
     return path
+
+
+SOFA_ELEVATIONS = (-30.0, 0.0, 30.0)
+SOFA_AZ_STEP = 45.0
+
+
+def write_sofa(
+    path: Path, *, left_ear_first: bool = True, taps: int = 16, skip: int = 0, seed: int = 0
+) -> tuple[np.ndarray, np.ndarray]:
+    """合成一个很小的 SOFA 文件（HDF5）：3 档仰角 × 8 档方位（SOFA 的方位是逆时针），各方向的先后打乱，
+    采样率 44.1 kHz。skip > 0 时少写几个方向（不再是规整网格）；left_ear_first=False 时文件里先放右耳，
+    内容不变。返回 (各方向的 [方位, 仰角, 距离], 冲激响应 [方向, 左右耳, 采样])。"""
+    rng = np.random.default_rng(seed)
+    positions = np.array([(k * SOFA_AZ_STEP, el, 1.5) for el in SOFA_ELEVATIONS for k in range(8)])
+    positions = positions[rng.permutation(len(positions))]
+    positions = positions[: len(positions) - skip]
+    ir = rng.standard_normal((len(positions), 2, taps))
+    ears = np.array([[0.0, 0.09, 0.0], [0.0, -0.09, 0.0]])  # +y 指向左侧
+    with h5py.File(path, "w") as f:
+        f["Data.IR"] = ir if left_ear_first else ir[:, ::-1]
+        f["Data.SamplingRate"] = np.array([float(SR)])
+        f["SourcePosition"] = positions
+        f["ReceiverPosition"] = ears if left_ear_first else ears[::-1]
+    return positions, ir
 
 
 @pytest.fixture

@@ -1,14 +1,13 @@
-"""HRTF 网格：从 SOFA 加载 → 顺时针方位索引 → 重采样 → 归一；双线性插值；前端用的二进制格式。
+"""HRTF 网格：SOFA 的测量数据 → 顺时针方位索引 → 重采样 → 归一；双线性插值；前端用的二进制格式。
 
 约定见 docs/SPEC.md §4.1 与 §5.6。data[el, az, ear, tap]，ear 0 = 左耳。
+这里只做换算：SOFA 文件由 media/sofa.py 读，算好的表由 assets.py 缓存。
 """
 
 import json
 import struct
 from dataclasses import dataclass
-from pathlib import Path
 
-import h5py
 import numpy as np
 from scipy.signal import resample_poly
 
@@ -38,19 +37,26 @@ class HrtfGrid:
         return self.data.shape[3]
 
 
+@dataclass(frozen=True)
+class SofaData:
+    """一个 SOFA 文件里建网格要用的内容（media/sofa.py 读出来的原样数据）。"""
+
+    name: str  # 文件名：报错时说是哪个文件
+    ir: np.ndarray  # (M, 2, N) float64：M 个方向各自的两耳冲激响应
+    sample_rate: int
+    source_positions: np.ndarray  # (M, 3)：方位角（逆时针，度）、仰角（度）、距离
+    receiver_positions: np.ndarray  # 两只耳朵的位置，+y 指向左侧
+
+
 def _left_ear_first(receivers: np.ndarray, ir: np.ndarray) -> np.ndarray:
     """SOFA 坐标 +y 指向左侧；保证 ear 0 是左耳。"""
     y = receivers.reshape(receivers.shape[0], -1)[:, 1]
     return ir if y[0] > y[1] else ir[:, ::-1, :]
 
 
-def from_sofa(path: Path, sample_rate: int) -> HrtfGrid:
-    with h5py.File(path, "r") as f:
-        ir = np.array(f["Data.IR"], dtype=np.float64)  # (M, 2, N)
-        fs = int(round(float(np.array(f["Data.SamplingRate"]).ravel()[0])))
-        pos = np.array(f["SourcePosition"], dtype=np.float64)
-        receivers = np.array(f["ReceiverPosition"], dtype=np.float64)
-    ir = _left_ear_first(receivers, ir)
+def from_sofa(sofa: SofaData, sample_rate: int) -> HrtfGrid:
+    fs, pos = sofa.sample_rate, sofa.source_positions
+    ir = _left_ear_first(sofa.receiver_positions, sofa.ir)
 
     el_nodes = np.unique(np.round(pos[:, 1], 6))
     az_ccw = np.mod(np.round(pos[:, 0], 6), 360.0)
@@ -58,7 +64,7 @@ def from_sofa(path: Path, sample_rate: int) -> HrtfGrid:
     az_values = np.unique(np.round(az_cw, 6))
     steps = np.diff(az_values)
     if not len(steps) or np.ptp(steps) > AZ_TOLERANCE_DEG or len(az_values) * len(el_nodes) != len(pos):
-        raise ValueError(f"{path.name} 不是规整的方位×仰角网格")
+        raise ValueError(f"{sofa.name} 不是规整的方位×仰角网格")
     step = float(steps[0])
 
     el_idx = np.searchsorted(el_nodes, np.round(pos[:, 1], 6))
@@ -150,15 +156,3 @@ def from_bytes(blob: bytes) -> HrtfGrid:
         el_nodes=nodes,
         data=data.astype(np.float32),
     )
-
-
-def load_grid(sofa_path: Path, cache_dir: Path, sample_rate: int) -> HrtfGrid:
-    """优先读缓存的二进制表；没有就从 SOFA 生成并缓存（原子写）。"""
-    cache = cache_dir / f"hrtf_{sample_rate}.bin"
-    if cache.exists():
-        return from_bytes(cache.read_bytes())
-    grid = from_sofa(sofa_path, sample_rate)
-    tmp = cache.with_suffix(".tmp")
-    tmp.write_bytes(to_bytes(grid))
-    tmp.replace(cache)
-    return grid

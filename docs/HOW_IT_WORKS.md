@@ -255,7 +255,7 @@ Run everything except the browser probe with `make test`.
 |---|---|---|
 | Orbit shapes and rotations | `backend/orbit8d/engine/orbit.py` | `web/src/orbit/orbit.ts` |
 | Timeline (phase, transitions, events) | `engine/timeline.py` | `web/src/orbit/timeline.ts` |
-| HRTF loading and interpolation | `engine/hrtf.py` | `web/src/audio/hrtf.ts` |
+| HRTF loading and interpolation | `media/sofa.py` (reads the file), `engine/hrtf.py`, `assets.py` (cache) | `web/src/audio/hrtf.ts` |
 | The nine sources, analysis | `engine/sources.py`, `engine/analysis.py` | `web/src/audio/params.ts` (channel layout) |
 | Block renderer, per-scene mixdown | `engine/render.py`, `engine/mixdown.py` | `web/src/audio/core.ts`, `worklet.ts` |
 | Reverb | `engine/reverb.py` | (impulse response served by the backend) |

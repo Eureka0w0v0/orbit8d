@@ -1,4 +1,4 @@
-"""HRTF 网格：插值、二进制格式、真实 KU100 数据的物理合理性（SPEC §5.6）。"""
+"""HRTF 网格：插值、二进制格式、从 SOFA 数据建网格、真实 KU100 数据的物理合理性（SPEC §5.6）。"""
 
 import numpy as np
 import pytest
@@ -6,7 +6,9 @@ from scipy.signal import resample_poly
 
 from orbit8d.assets import HRTF_FILE
 from orbit8d.config import load_settings
-from orbit8d.engine.hrtf import HrtfGrid, from_bytes, from_sofa, interpolate, to_bytes
+from orbit8d.engine.hrtf import TAPS, HrtfGrid, SofaData, from_bytes, from_sofa, interpolate, to_bytes
+from orbit8d.media.sofa import read_sofa
+from tests.conftest import SOFA_AZ_STEP, SOFA_ELEVATIONS, write_sofa
 
 SR = 44100
 SOFA = load_settings().assets_dir / HRTF_FILE
@@ -61,6 +63,46 @@ def test_from_bytes_rejects_bad_magic():
         from_bytes(b"NOPE" + b"\x00" * 16)
 
 
+def test_a_sofa_file_becomes_a_clockwise_grid_normalised_on_the_horizontal_ring(tmp_path):
+    positions, ir = write_sofa(tmp_path / "small.sofa")
+    grid = from_sofa(read_sofa(tmp_path / "small.sofa"), SR)  # 文件就是 44.1 kHz：不重采样
+    assert grid.data.shape == (3, 8, 2, TAPS) and grid.data.dtype == np.float32
+    assert grid.sample_rate == SR and grid.az_step_deg == SOFA_AZ_STEP
+    assert grid.el_nodes.tolist() == list(SOFA_ELEVATIONS)
+    assert np.all(grid.data[..., ir.shape[-1] :] == 0)  # 不够 128 点的补零
+    assert (grid.data[1].astype(np.float64) ** 2).sum(-1).mean() == pytest.approx(1.0, abs=1e-6)
+    level = np.sqrt((ir[positions[:, 1] == 0.0] ** 2).sum(-1).mean())  # 水平一圈平均每耳能量归一成 1
+    for (az_ccw, el, _), measured in zip(positions, ir, strict=True):
+        i = SOFA_ELEVATIONS.index(el)
+        j = int(round((360.0 - az_ccw) % 360.0 / SOFA_AZ_STEP)) % 8  # 逆时针方位 → 顺时针索引
+        assert np.abs(grid.data[i, j, :, : ir.shape[-1]] * level - measured).max() < 1e-5
+
+
+def test_a_sofa_file_that_lists_the_right_ear_first_gives_the_same_grid(tmp_path):
+    write_sofa(tmp_path / "left.sofa")
+    write_sofa(tmp_path / "right.sofa", left_ear_first=False)
+    left, right = (from_sofa(read_sofa(tmp_path / name), SR) for name in ("left.sofa", "right.sofa"))
+    assert np.array_equal(left.data, right.data)
+
+
+def test_a_sofa_file_that_is_not_a_full_grid_is_rejected_by_name(tmp_path):
+    write_sofa(tmp_path / "holes.sofa", skip=1)
+    with pytest.raises(ValueError, match="holes.sofa"):
+        from_sofa(read_sofa(tmp_path / "holes.sofa"), SR)
+
+
+def test_measurements_at_another_rate_are_resampled_and_cut_to_the_grid_length():
+    """不经文件，直接给测量数据：48 kHz、300 点、1 ms 处（第 48 个采样）一个脉冲
+    → 44.1 kHz、128 点，脉冲仍在 1 ms（第 44 个采样）。"""
+    positions = np.array([(k * 90.0, el, 1.0) for el in (-45.0, 45.0) for k in range(4)])
+    ir = np.zeros((len(positions), 2, 300))
+    ir[:, :, 48] = 1.0
+    ears = np.array([[0.0, 0.09, 0.0], [0.0, -0.09, 0.0]])
+    grid = from_sofa(SofaData("memory", ir, 48000, positions, ears), SR)
+    assert grid.data.shape == (2, 4, 2, TAPS) and grid.sample_rate == SR and grid.az_step_deg == 90.0
+    assert set(np.abs(grid.data).argmax(axis=-1).ravel().tolist()) == {44}
+
+
 def onset_ms(ir: np.ndarray, sr: int = SR) -> float:
     up = np.abs(resample_poly(ir, 8, 1))
     return float(np.argmax(up > 0.2 * up.max()) / (8 * sr) * 1e3)
@@ -68,7 +110,7 @@ def onset_ms(ir: np.ndarray, sr: int = SR) -> float:
 
 @pytest.fixture(scope="module")
 def ku100() -> HrtfGrid:
-    return from_sofa(SOFA, SR)
+    return from_sofa(read_sofa(SOFA), SR)
 
 
 @needs_sofa

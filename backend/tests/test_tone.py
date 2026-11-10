@@ -17,8 +17,9 @@ MID = (BANDS_HZ >= 200) & (BANDS_HZ <= 12000)
 @pytest.fixture(scope="module")
 def setup():
     from orbit8d.engine.hrtf import from_sofa
+    from orbit8d.media.sofa import read_sofa
 
-    renderer = Renderer(from_sofa(SOFA, SR))
+    renderer = Renderer(from_sofa(read_sofa(SOFA), SR))
     result = analyze(*as_signals(*fake_stems(seconds=12.0)), SR, renderer)
     return renderer, result.sources, result.analysis
 

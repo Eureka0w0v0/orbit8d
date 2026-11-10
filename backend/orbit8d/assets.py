@@ -1,4 +1,7 @@
-"""外部数据集的下载与校验：uv run python -m orbit8d.assets"""
+"""外部数据集的下载与校验，以及由它们算出来的缓存文件（HRTF 表、混响冲激响应）。
+
+uv run python -m orbit8d.assets
+"""
 
 import logging
 import sys
@@ -10,7 +13,9 @@ import soundfile as sf
 
 from orbit8d.config import load_settings
 from orbit8d.download import download, sha256_of
+from orbit8d.engine.hrtf import HrtfGrid, from_bytes, from_sofa, to_bytes
 from orbit8d.engine.reverb import BRIR_VERSION
+from orbit8d.media.sofa import read_sofa
 from orbit8d.separate.model import model_files
 
 log = logging.getLogger(__name__)
@@ -29,6 +34,18 @@ def ensure_hrtf_sofa(assets_dir: Path) -> Path:
     log.info("downloading hrtf", extra={"event": "asset.download", "url": HRTF_URL})
     download(HRTF_URL, target, HRTF_SHA256)
     return target
+
+
+def load_hrtf_grid(sofa_path: Path, cache_dir: Path, sample_rate: int) -> HrtfGrid:
+    """优先读缓存的二进制表；没有就从 SOFA 生成并缓存（原子写）。"""
+    cache = cache_dir / f"hrtf_{sample_rate}.bin"
+    if cache.exists():
+        return from_bytes(cache.read_bytes())
+    grid = from_sofa(read_sofa(sofa_path), sample_rate)
+    tmp = cache.with_suffix(".tmp")
+    tmp.write_bytes(to_bytes(grid))
+    tmp.replace(cache)
+    return grid
 
 
 def cached_brir(assets_dir: Path, room: str, sample_rate: int, make: Callable[[], np.ndarray]) -> Path:

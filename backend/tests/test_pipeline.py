@@ -11,6 +11,7 @@ from orbit8d.engine.hrtf import from_sofa
 from orbit8d.engine.master import CEILING_DBTP, true_peak
 from orbit8d.engine.mixdown import Renderer
 from orbit8d.engine.scene import Scene, preset
+from orbit8d.media.sofa import read_sofa
 
 SR = 44100
 SOFA = load_settings().assets_dir / HRTF_FILE
@@ -40,7 +41,7 @@ def as_signals(orig: np.ndarray, stems: dict[str, np.ndarray]) -> tuple[ArraySig
 
 @pytest.fixture(scope="module")
 def renderer() -> Renderer:
-    return Renderer(from_sofa(SOFA, SR))
+    return Renderer(from_sofa(read_sofa(SOFA), SR))
 
 
 @pytest.fixture(scope="module")
