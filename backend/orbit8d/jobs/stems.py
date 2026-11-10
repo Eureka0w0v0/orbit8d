@@ -15,6 +15,7 @@ from orbit8d.engine.scene import TRACKS
 from orbit8d.jobs.layout import ORIGINAL_PREVIEW, ProjectFiles
 from orbit8d.media.audiofile import AudioFile, write_audio
 
+PREVIEW_NAMES = frozenset({*PREVIEW_FILES, ORIGINAL_PREVIEW})  # write_previews 写出的全部试听文件
 PREVIEW_SUBTYPE = STEM_SUBTYPE = "PCM_24"
 FLAC_TOLERANCE_LSB = 4  # 24 位 FLAC 读回与原值的允许误差（量化 + 读写归一化差，实际约 1.5 个最低位）
 

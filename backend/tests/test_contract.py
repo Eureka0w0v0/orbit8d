@@ -7,11 +7,13 @@ from typing import get_args
 
 from fastapi.testclient import TestClient
 
-from orbit8d.api.app import PREVIEW_NAMES, ExportRequest, create_app
+from orbit8d.api.app import create_app
 from orbit8d.api.guards import REFUSAL_STATUS
+from orbit8d.api.routes_exports import ExportRequest
 from orbit8d.config import load_settings
 from orbit8d.engine import choreo
 from orbit8d.engine.scene import MAX_BARS, TrackName
+from orbit8d.jobs.stems import PREVIEW_NAMES
 from tests.conftest import FakeSeparator
 from tests.make_golden import CONTRACT_FILE, PACKAGE_DIR, contract, contract_json
 
@@ -49,7 +51,7 @@ def test_backend_copies_agree_with_the_contract():
         "scene.MAX_BARS": (MAX_BARS, max(c["bar_choices"])),
         "ExportRequest.format": (_literal(ExportRequest, "format"), c["export_formats"]),
         "ExportRequest.loudness": (_literal(ExportRequest, "loudness"), c["loudness"]),
-        "api.PREVIEW_NAMES": (set(PREVIEW_NAMES), {*c["preview_files"], c["original_preview"]}),
+        "stems.PREVIEW_NAMES": (set(PREVIEW_NAMES), {*c["preview_files"], c["original_preview"]}),
         "choreo 事件时长": ([choreo.MIN_EVENT_S, choreo.MAX_EVENT_S], _bounds(c, "Event", "duration_s")),
         "choreo 混响量": (list(choreo.WET_RANGE_DB), _bounds(c, "Section", "wet_db")),
     }
