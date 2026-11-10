@@ -5,7 +5,6 @@
 import json
 import logging
 import queue
-import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -30,8 +29,6 @@ POLL_S = 0.2
 ANALYZED_PROGRESS = 0.7
 STEP_MODEL_DOWNLOAD = "model_download"  # 分轨阶段里第一次下载模型（界面单独显示）
 PROGRESS_STEP = 0.005  # 进度至少涨这么多才写一次记录
-MAX_NAME = 100
-UNSAFE_CHARS = re.compile(r'[\x00-\x1f\x7f/\\:*?"<>|]')
 
 
 class Separator(Protocol):
@@ -53,31 +50,6 @@ class Job:
     kind: JobKind
     id: str  # 项目或导出的 ID
     project_id: str  # 这个任务属于哪首歌（删歌前据此判断是否还有任务）
-
-
-def safe_name(text: str, fallback: str = "untitled") -> str:
-    """去掉路径分隔符和控制字符，只用于显示与下载文件名，从不参与拼接存储路径。"""
-    cleaned = UNSAFE_CHARS.sub(" ", text).strip(" .")
-    return cleaned[:MAX_NAME].strip() or fallback
-
-
-def song_title(source: dict) -> str:
-    return source.get("title") or Path(source.get("filename", "")).stem or "untitled"
-
-
-def export_file_name(source: dict, ext: str) -> str:
-    artist = source.get("artist", "")
-    base = f"{artist} - {song_title(source)}" if artist else song_title(source)
-    return f"{safe_name(base)} (8D).{ext}"
-
-
-def export_metadata(source: dict) -> dict[str, str]:
-    meta = {
-        "title": f"{song_title(source)} (8D)",
-        "artist": source.get("artist", ""),
-        "album": source.get("album", ""),
-    }
-    return {k: v for k, v in meta.items() if v}
 
 
 class JobRunner:
@@ -252,9 +224,9 @@ class JobRunner:
         write_audio(out.render, mastered, 2, SAMPLE_RATE, "FLOAT")
         store.transition_export(eid, ExportState.ENCODING)
         fmt = OUTPUT_FORMATS[rec.format]
-        cover = files.source if project.source.get("has_cover") else None
+        cover = files.source if project.source.has_cover else None
         try:
-            encode(out.render, out.output(fmt.ext), rec.format, export_metadata(project.source), cover)
+            encode(out.render, out.output(fmt.ext), rec.format, project.source.export_metadata(), cover)
         finally:
             out.render.unlink(missing_ok=True)
-        store.transition_export(eid, ExportState.DONE, file_name=export_file_name(project.source, fmt.ext))
+        store.transition_export(eid, ExportState.DONE, file_name=project.source.export_file_name(fmt.ext))

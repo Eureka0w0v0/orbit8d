@@ -31,8 +31,16 @@ from orbit8d.engine.scene import PRESETS, Scene, canonical_json, preset
 from orbit8d.engine.structure import SectionInfo
 from orbit8d.jobs.layout import ORIGINAL_PREVIEW
 from orbit8d.jobs.states import ExportState, ProjectState, is_terminal
-from orbit8d.jobs.store import UPLOAD_SUFFIX, ExportRecord, NotFound, ProjectRecord, Store
-from orbit8d.jobs.worker import JobKind, JobRunner, Separator, safe_name, song_title
+from orbit8d.jobs.store import (
+    UPLOAD_SUFFIX,
+    ExportRecord,
+    NotFound,
+    ProjectRecord,
+    SourceInfo,
+    Store,
+    safe_name,
+)
+from orbit8d.jobs.worker import JobKind, JobRunner, Separator
 from orbit8d.media.ffmpeg import OUTPUT_FORMATS, MediaError, available_formats, probe
 
 log = logging.getLogger(__name__)
@@ -95,9 +103,9 @@ def project_summary(store: Store, rec: ProjectRecord) -> dict:
     return {
         "id": rec.id,
         "state": str(rec.state),
-        "title": song_title(rec.source),
-        "artist": rec.source.get("artist", ""),
-        "duration_s": rec.source.get("duration_s", 0.0),
+        "title": rec.source.song_title,
+        "artist": rec.source.artist,
+        "duration_s": rec.source.duration_s,
         "size_bytes": store.disk_usage(rec.id),
         "error": rec.error,
         "last_used": store.last_used(rec),
@@ -222,17 +230,17 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
             ProjectRecord(
                 id=pid,
                 state=ProjectState.UPLOADED,
-                source={
-                    "filename": name,
-                    "size": size,
-                    "sha256": sha256,
-                    "codec": info.codec,
-                    "duration_s": info.duration_s,
-                    "title": info.title,
-                    "artist": info.artist,
-                    "album": info.album,
-                    "has_cover": info.has_cover,
-                },
+                source=SourceInfo(
+                    filename=name,
+                    size=size,
+                    sha256=sha256,
+                    codec=info.codec,
+                    duration_s=info.duration_s,
+                    title=info.title,
+                    artist=info.artist,
+                    album=info.album,
+                    has_cover=info.has_cover,
+                ),
             )
         )
         runner.submit(JobKind.ANALYSIS, pid, pid)

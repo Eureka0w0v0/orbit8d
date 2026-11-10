@@ -9,7 +9,7 @@ import shutil
 import threading
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 from orbit8d.config import Settings
@@ -22,6 +22,9 @@ ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
 PROJECT_INTERRUPTED = "INTERRUPTED"
 EXPORT_INTERRUPTED = "EXPORT_INTERRUPTED"
 UPLOAD_SUFFIX = ".part"
+MAX_NAME = 100
+UNSAFE_CHARS = re.compile(r'[\x00-\x1f\x7f/\\:*?"<>|]')
+UNTITLED = "untitled"
 
 
 class NotFound(LookupError):
@@ -32,11 +35,51 @@ def valid_id(value: str) -> bool:
     return bool(ID_PATTERN.fullmatch(value))
 
 
+def safe_name(text: str, fallback: str = UNTITLED) -> str:
+    """去掉路径分隔符和控制字符，只用于显示与下载文件名，从不参与拼接存储路径。"""
+    cleaned = UNSAFE_CHARS.sub(" ", text).strip(" .")
+    return cleaned[:MAX_NAME].strip() or fallback
+
+
+@dataclass(frozen=True)
+class SourceInfo:
+    """上传的原文件：文件名、大小、哈希与 ffprobe 读出的标签。字段都有默认值，旧记录缺哪一项都读得出来。"""
+
+    filename: str = ""
+    size: int = 0
+    sha256: str = ""
+    codec: str = ""
+    duration_s: float = 0.0
+    title: str = ""
+    artist: str = ""
+    album: str = ""
+    has_cover: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SourceInfo":
+        known = {f.name for f in fields(cls)}
+        return cls(**{key: value for key, value in data.items() if key in known})
+
+    @property
+    def song_title(self) -> str:
+        """显示用的歌名：标签里的标题，没有就用文件名（去掉扩展名）。"""
+        return self.title or Path(self.filename).stem or UNTITLED
+
+    def export_file_name(self, ext: str) -> str:
+        base = f"{self.artist} - {self.song_title}" if self.artist else self.song_title
+        return f"{safe_name(base)} (8D).{ext}"
+
+    def export_metadata(self) -> dict[str, str]:
+        """写进导出文件的标签（空的不写）。"""
+        meta = {"title": f"{self.song_title} (8D)", "artist": self.artist, "album": self.album}
+        return {key: value for key, value in meta.items() if value}
+
+
 @dataclass
 class ProjectRecord:
     id: str
     state: ProjectState
-    source: dict
+    source: SourceInfo
     progress: float = 0.0
     step: str = ""  # 当前状态里的子步骤（如分轨前第一次下载模型），界面据此换提示
     error: dict | None = None
@@ -51,7 +94,8 @@ class ProjectRecord:
 
     @classmethod
     def from_dict(cls, data: dict) -> "ProjectRecord":
-        return cls(**{**data, "state": ProjectState(data["state"])})
+        source = SourceInfo.from_dict(data["source"])
+        return cls(**{**data, "state": ProjectState(data["state"]), "source": source})
 
 
 @dataclass
