@@ -1,4 +1,4 @@
-// 实时双耳渲染核心：与 backend/orbit8d/engine/render.py + pipeline.py 算法逐块一致（docs/SPEC.md §5.2）。
+// 实时双耳渲染核心：与 backend/orbit8d/engine/render.py + mixdown.py 算法逐块一致（docs/SPEC.md §5.2）。
 // 纯计算类，不依赖任何浏览器 API：AudioWorklet 调用它，单元测试也直接调用它。
 // 试听时改参数（音量、静音、混响送出）不硬切：各声源的增益在 20 ms 内逐块线性过渡；
 // 第一次设参数和跳转之后直接到位（导出没有中途改参数，逐块结果仍与 Python 一致）。

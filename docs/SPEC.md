@@ -34,7 +34,7 @@ web/（Vite + TypeScript + Three.js，无 UI 框架）
   src/ui/      音轨面板、参数面板、播放条里的时间轴、导入与导出
   src/i18n/    界面三语词典（中文 / 日本語 / English）与语言检测
 backend/orbit8d/（Python 3.12 + FastAPI）
-  engine/      hrtf / orbit / timeline / render / reverb / master / tone / tempo / structure / choreo / scene / pipeline / chunks（分段处理）
+  engine/      hrtf / orbit / timeline / render / reverb / master / tone / tempo / structure / choreo / scene / sources（9 路声源）/ mixdown（按场景渲染到母带）/ analysis（分析）/ chunks（分段处理）
   media/       ffmpeg 探测、解码、编码（参数列表调用，不经 shell）；音频文件的分段读写（audiofile）
   separate/    Demucs 分轨；分轨模型文件（model：先找 HuggingFace 缓存，缺了才下载并校验 sha256）
   jobs/        显式状态机、文件存储（原子写）、单工位任务队列
@@ -158,7 +158,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 - 要“看前看后”的处理给每段前后补上下文、只保留本段：零相位分频 ±0.5 秒（二阶 120 Hz 的瞬态衰减到 e⁻²⁶⁶）、线性相位 EQ ±512、真峰值 ±16（插值滤波器只用到 ±10 个采样；真峰值本身也按 65 536 采样分块算）、限幅增益 ±2048（真峰值 10 + 最小值滤波 1323 + 平滑 661）。
 - 固定帧切分的统计用 `Framer` 保证帧位置与整段相同：Welch 平均谱（8192 点、半重叠，各段按帧数加权平均；一次最多 64 帧）、测速谱通量（2048 点跳 256，相邻帧差分跨段接续）、段落识别的逐帧频带（4096 跳 2048）。按区间求和的统计（响度门限块、每小节功率、0.25 秒音量起伏）用 `SegmentSums` 按区间边界累计。
 - 响度：`master.LoudnessMeter` 逐段做 BS.1770（K 计权状态接续、400 ms 门限块按整曲位置累计、−70 LUFS 绝对门限 + −10 LU 相对门限），与 pyloudnorm 0.2 逐项一致（误差 < 1e-9 LU）；比一个门限块还短或全静音时为 −inf。
-- 分析（`pipeline.analyze`）共四遍：①原曲 + 人声 / 鼓 / 贝斯分轨 → 9 路声源与所有与速度无关的统计（各轨原始能量、谱通量、原曲 Welch 谱与响度、音量起伏、逐帧频带、声源频谱、最大绝对值）；测速；②经典场景渲染只求各轨能量 → 校准增益；③渲染校准后的混音（存 float32）→ 过 HRTF 平均补偿的 Welch 谱 → 音色锚点 → 过场景 EQ 测片段峰值与响度 → 试听总增益；④再读一遍原曲与人声分轨 → 每小节功率 → 段落。
+- 分析（`analysis.analyze`）共四遍：①原曲 + 人声 / 鼓 / 贝斯分轨 → 9 路声源与所有与速度无关的统计（各轨原始能量、谱通量、原曲 Welch 谱与响度、音量起伏、逐帧频带、声源频谱、最大绝对值）；测速；②经典场景渲染只求各轨能量 → 校准增益；③渲染校准后的混音（存 float32）→ 过 HRTF 平均补偿的 Welch 谱 → 音色锚点 → 过场景 EQ 测片段峰值与响度 → 试听总增益；④再读一遍原曲与人声分轨 → 每小节功率 → 段落。
 - 导出读试听文件（`preview/*.flac` × preview_scale，与浏览器试听同一份数据）：逐段渲染 → 流式 EQ（延迟 512 点在写入整曲混音时补回）→ 测片段峰值与响度 → 总增益 → 逐段限幅、边算边写 `render.wav`。`RENDER_VERSION = 3`（导出读试听文件、分段渲染、响度可选）；`ANALYSIS_VERSION` 不变（结果等价，不触发重新分析）。
 - 实测（M4 Pro）：Faded 212 秒——分析峰值 1.06 GB / 14.6 秒、导出 0.75 GB / 8.0 秒（旧实现 5.2 GB / 5.6 GB）；17.7 分钟合成长歌——分析 2.4 GB / 75 秒、导出 0.95 GB / 41 秒。与旧实现比：段落、测速、音量起伏逐位相同，校准增益相对差 ~1e-11，音色锚点差 < 1e-8 dB，导出差异 −125.8 dB（来自试听文件的 24 位量化）。
 
@@ -244,12 +244,12 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | web scene/edit | 切分 / 删除 / 拖分界吸附小节线；事件重叠；预设只改当前段；拖事件吸附到拍、碰到同类事件停住、改长短 0.5–30 秒 | 纯函数、不改入参、位置没变返回原对象 |
 | web scene/history | 撤销 / 重做、连续修改合并、新修改清空重做、上限 100 步 | 逐步断言 |
 | web i18n | 中日英三份词典条目完全一致、无空串、英文全部译过；语言检测优先级；段落名 / 预设名 / 错误码的显示 | 逐项断言 |
-| engine.pipeline | 原曲 × original_gain 与经典场景 8D 试听（× preview_gain）的响度 | 相差 < 0.1 LU |
+| engine.analysis | 原曲 × original_gain 与经典场景 8D 试听（× preview_gain）的响度 | 相差 < 0.1 LU |
 | engine.structure | 音量起伏：相对最响处、静音压到 −60、不满一格也算一格 | 逐点断言 |
 | api | 场景存取：未保存 404、保存后原样取回、不合法 422 且不覆盖、超大 413、跨站 403 | 状态码与内容 |
 | engine.hrtf | 网格点插值 = 原始 IR；90° 两耳时间差；左右对称 | < 1e-9；0.62–0.70 ms；镜像能量差 < 1.5 dB |
 | engine.render | 固定方向与直接卷积；块 32 vs 16 | < −100 dB；< −45 dB |
-| engine.pipeline | 超低频正前方；时长 | <100 Hz 两耳相关 > 0.999；样本数相等 |
+| engine.mixdown | 超低频正前方；时长 | <100 Hz 两耳相关 > 0.999；样本数相等 |
 | engine.master | 限幅后真峰值 | ≤ −1.0 dBTP |
 | web audio core | 黄金渲染用例（合成 HRIR 网格 + 9 路 8192 采样噪声；三段 + 过渡 + 停顿 + 飞过头顶 + 分段混响量） | 与 Python 输出差异 < −90 dB |
 | web scene/mapping | 方向↔世界坐标互逆、局部→世界与轨道公式一致、由位置反推相位 | < 1e-6 |
@@ -257,8 +257,8 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | api | 非音频 / 超大 / 危险文件名 / 非法 Host | 400 / 413 / 不落盘 / 400 |
 | api | 同参数重复导出 | 同一导出 ID |
 | e2e | 10 s 音频上传 → 就绪 → 五种格式导出 | ffprobe 可读、时长一致 |
-| engine.chunks / master / tempo / structure / pipeline | 每个分段核心按随机段长（含 1 采样、不满一段、上下文比段还长）与整段 scipy / pyloudnorm 参考对比；SceneRender 按不同段长 | 卷积 / 帧 / Welch < 1e-10；响度 < 1e-9 LU；真峰值逐位相同；限幅 < 1e-10；渲染 < 1e-12 |
-| engine.pipeline | 20 秒与 60 秒合成歌的分析内存（tracemalloc） | 每秒增长 < 2.5 MB，60 秒峰值 < 500 MB |
+| engine.chunks / master / tempo / structure / mixdown / analysis | 每个分段核心按随机段长（含 1 采样、不满一段、上下文比段还长）与整段 scipy / pyloudnorm 参考对比；SceneRender 按不同段长 | 卷积 / 帧 / Welch < 1e-10；响度 < 1e-9 LU；真峰值逐位相同；限幅 < 1e-10；渲染 < 1e-12 |
+| engine.analysis | 20 秒与 60 秒合成歌的分析内存（tracemalloc） | 每秒增长 < 2.5 MB，60 秒峰值 < 500 MB |
 | assets / separate.model | 本机假 HTTP 服务：下载校验、校验失败与 404 不留半截文件、残留 .part 覆盖、缓存优先且坏缓存重下、断网报 `MODEL_DOWNLOAD_FAILED`；分轨进度换算 | 逐项断言 |
 | api（存储） | 新歌分轨是 FLAC 且没有 orig.wav；峰值 > 1 的分轨按缩放系数还原；旧项目启动迁移后可重新分析与导出；校验失败保留 WAV；列表排序与字段；删除连同导出、404 / 409 / 跨站 403、删后可重新导入；启动清理；中断的导出码；响度选项 −14 / −9 LUFS；模型下载子步骤与失败码 | 状态码、文件、数值 |
 | engine.choreo | 重复段落轮换且确定；重编保留分界、段名、混音、房间；自定义段名按主歌；最响副歌按原曲音量起伏 | 逐项断言 |

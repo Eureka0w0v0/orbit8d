@@ -1,4 +1,4 @@
-// 场景 → 渲染参数。与 backend/orbit8d/engine/pipeline.py 的 render_tracks / send_signal 逐项对应。
+// 场景 → 渲染参数。与 backend/orbit8d/engine/mixdown.py 的 render_tracks / send_signal 逐项对应。
 // 轨道运动（含分段过渡、停顿、飞过头顶）与分段混响量都预先编译成纯数据，整包 postMessage 给 AudioWorklet。
 
 import { effectiveTrackGains } from "../model/mix";

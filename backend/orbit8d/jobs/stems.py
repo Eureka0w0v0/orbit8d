@@ -10,8 +10,8 @@ import numpy as np
 
 from orbit8d.config import SAMPLE_RATE
 from orbit8d.engine.chunks import aligned_windows, chunk_ranges
-from orbit8d.engine.pipeline import PREVIEW_FILES, SOURCE_CHANNELS, Sources
 from orbit8d.engine.scene import TRACKS
+from orbit8d.engine.sources import PREVIEW_FILES, SOURCE_CHANNELS, Sources
 from orbit8d.jobs.layout import ORIGINAL_PREVIEW, ProjectFiles
 from orbit8d.media.audiofile import AudioFile, write_audio
 

@@ -3,7 +3,7 @@
 
 from fastapi import Request
 
-from orbit8d.engine.pipeline import Renderer
+from orbit8d.engine.mixdown import Renderer
 from orbit8d.jobs.songs import Songs
 
 

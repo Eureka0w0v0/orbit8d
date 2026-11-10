@@ -5,10 +5,11 @@ import pytest
 
 from orbit8d.assets import HRTF_FILE
 from orbit8d.config import load_settings
+from orbit8d.engine.analysis import Analysis, analyze, prepare
 from orbit8d.engine.chunks import ArraySignal
 from orbit8d.engine.hrtf import from_sofa
 from orbit8d.engine.master import CEILING_DBTP, true_peak
-from orbit8d.engine.pipeline import Analysis, Renderer, analyze, prepare
+from orbit8d.engine.mixdown import Renderer
 from orbit8d.engine.scene import Scene, preset
 
 SR = 44100

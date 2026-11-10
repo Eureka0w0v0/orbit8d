@@ -80,10 +80,11 @@ def match_gain_db(reference: np.ndarray, rendered: np.ndarray, sr: int) -> np.nd
 
 
 class ToneInputs(Protocol):
-    """分析结果（pipeline.Analysis）里做音色补偿要用的部分。"""
+    """分析结果（analysis.Analysis）里渲染一个场景、算它的音色补偿要用的部分。"""
 
     duration_s: float
     bpm_norm: float
+    default_bars: int  # 参考场景（经典预设）按它生成：锚点是对着那个场景量出来的
     t_ref: float
     calibration: dict[str, float]
     spectra: dict[str, list[float]]

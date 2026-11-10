@@ -9,6 +9,7 @@ import pytest
 from scipy.ndimage import minimum_filter1d, uniform_filter1d
 from scipy.signal import butter, firwin, oaconvolve, resample_poly, sosfiltfilt, stft, welch
 
+from orbit8d.engine.analysis import prepare
 from orbit8d.engine.chunks import (
     CHUNK,
     ArraySignal,
@@ -33,8 +34,9 @@ from orbit8d.engine.master import (
     measure,
     true_peak,
 )
-from orbit8d.engine.pipeline import CALIBRATION_KEYS, CROSSOVER_HZ, Renderer, SceneRender, Sources, prepare
+from orbit8d.engine.mixdown import Renderer, SceneRender
 from orbit8d.engine.render import BLOCK
+from orbit8d.engine.sources import CALIBRATION_KEYS, CROSSOVER_HZ, Sources
 from orbit8d.engine.structure import (
     ENVELOPE_FLOOR_DB,
     BarPower,

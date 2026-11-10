@@ -13,7 +13,7 @@ from scipy.signal import butter, sosfiltfilt
 
 from orbit8d.api.app import create_app
 from orbit8d.config import load_settings
-from orbit8d.engine.pipeline import ANALYSIS_VERSION
+from orbit8d.engine.analysis import ANALYSIS_VERSION
 from orbit8d.engine.scene import Scene, preset
 from tests.conftest import FakeSeparator, write_song
 

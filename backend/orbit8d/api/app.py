@@ -18,7 +18,7 @@ from orbit8d.api.routes_scene import scene_router
 from orbit8d.assets import ensure_hrtf_sofa, prune_stale_assets
 from orbit8d.config import REPO_ROOT, SAMPLE_RATE, Settings
 from orbit8d.engine.hrtf import load_grid, to_bytes
-from orbit8d.engine.pipeline import Renderer
+from orbit8d.engine.mixdown import Renderer
 from orbit8d.jobs.songs import Songs
 from orbit8d.jobs.store import Store
 from orbit8d.jobs.worker import JobRunner, Separator

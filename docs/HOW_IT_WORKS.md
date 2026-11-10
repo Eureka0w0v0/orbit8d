@@ -254,7 +254,7 @@ Run everything with `make test`.
 | Orbit shapes and rotations | `backend/orbit8d/engine/orbit.py` | `web/src/orbit/orbit.ts` |
 | Timeline (phase, transitions, events) | `engine/timeline.py` | `web/src/orbit/timeline.ts` |
 | HRTF loading and interpolation | `engine/hrtf.py` | `web/src/audio/hrtf.ts` |
-| Block renderer | `engine/render.py`, `engine/pipeline.py` | `web/src/audio/core.ts`, `worklet.ts` |
+| Block renderer | `engine/render.py`, `engine/mixdown.py` | `web/src/audio/core.ts`, `worklet.ts` |
 | Reverb | `engine/reverb.py` | (impulse response served by the backend) |
 | Tone correction | `engine/tone.py`, `engine/master.py` | `web/src/audio/engine.ts` (applies it) |
 | Mastering | `engine/master.py` | — |

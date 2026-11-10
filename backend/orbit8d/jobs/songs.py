@@ -5,7 +5,8 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
-from orbit8d.engine.pipeline import RENDER_VERSION, Analysis
+from orbit8d.engine.analysis import Analysis
+from orbit8d.engine.mixdown import RENDER_VERSION
 from orbit8d.engine.scene import Scene, canonical_json
 from orbit8d.errors import CodedError
 from orbit8d.jobs.states import ExportState, ProjectState, is_terminal

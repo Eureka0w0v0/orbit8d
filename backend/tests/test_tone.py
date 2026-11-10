@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 from scipy.signal import butter, sosfilt
 
-from orbit8d.engine.pipeline import Renderer, analyze
+from orbit8d.engine.analysis import analyze
+from orbit8d.engine.mixdown import Renderer
 from orbit8d.engine.scene import preset
 from orbit8d.engine.tone import BANDS_HZ, band_power, match_gain_db, scene_eq_db
 from tests.test_pipeline import SOFA, SR, as_signals, fake_stems
