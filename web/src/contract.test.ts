@@ -1,13 +1,12 @@
 // 前后端契约：shared/golden/contract.json 是后端常量的快照（backend/tests/make_golden.py 生成，test_contract.py 校验），
 // 这里断言 TS 的常量、类型与 i18n 和它一致。联合类型、接口在运行时不存在，所以用 `satisfies Record<类型, true>`
 // 列成员清单：类型多一个或少一个成员都编译不过（npm run typecheck），清单再在运行时与 contract.json 比对。
-// TS 侧没有导出的副本（如 audio/engine.ts 的 STEM_LAYOUT）暂不断言，导出后再补进来。
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { SAMPLE_RATE, STEM_NAMES } from "./audio/engine";
-import { INPUT_CHANNELS } from "./audio/params";
+import { SAMPLE_RATE } from "./audio/engine";
+import { INPUT_CHANNELS, STEM_LAYOUT, STEM_NAMES, SUB_CHANNEL0 } from "./audio/params";
 import { DICTIONARIES, LANGS, errorText } from "./i18n";
 import { MAX_EVENTS, MAX_SECTIONS } from "./model/edit";
 import { LAYERS, type LayerName } from "./model/layers";
@@ -223,6 +222,10 @@ describe("前后端契约（shared/golden/contract.json）", () => {
   it("试听：9 声道顺序、要下载的试听文件、采样率", () => {
     expect([...INPUT_CHANNELS]).toEqual(contract.source_channels);
     expect([...STEM_NAMES].sort()).toEqual(Object.keys(contract.preview_files).sort());
+    const layout = Object.fromEntries(STEM_LAYOUT.map((s) => [s.name, Array.from({ length: s.channels }, (_, k) => s.channel + k)]));
+    expect(layout).toEqual(contract.preview_files); // 每个试听文件装进 9 声道缓冲的哪几路
+    expect(SUB_CHANNEL0).toBe(contract.source_channels.indexOf("bass_sub"));
+    expect(contract.source_channels.slice(SUB_CHANNEL0)).toEqual(["bass_sub", "drums_sub", "other_sub"]);
     expect(SAMPLE_RATE).toBe(contract.sample_rate);
   });
 

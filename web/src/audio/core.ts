@@ -7,7 +7,7 @@
 import type { Position } from "../orbit/orbit";
 import { trackPosition, wetDbAt } from "../orbit/timeline";
 import { interpolateHrir, type HrtfTable } from "./hrtf";
-import type { RenderParams, SourceParams } from "./params";
+import { SUB_CHANNEL0, type RenderParams, type SourceParams } from "./params";
 
 export const BLOCK = 32;
 export const QUANTUM = 128;
@@ -15,7 +15,6 @@ const REAR_SHELF_HZ = 3000;
 const MIN_DISTANCE_M = 0.5;
 const MAX_DISTANCE_M = 4;
 const REF_DISTANCE_M = 1;
-const SUB_CHANNEL0 = 6;
 const DEG = Math.PI / 180;
 export const RAMP_S = 0.02; // 参数变化的过渡时间
 

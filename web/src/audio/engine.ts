@@ -6,11 +6,10 @@
 import workletUrl from "./worklet.ts?worker&url";
 import { parseHrtf } from "./hrtf";
 import type { ListenMode } from "../types";
-import { INPUT_CHANNELS, type RenderParams } from "./params";
+import { INPUT_CHANNELS, PROCESSOR_NAME, STEM_LAYOUT, type RenderParams } from "./params";
 import type { WorkletMessage } from "./worklet";
 
 export const SAMPLE_RATE = 44100;
-const PROCESSOR_NAME = "orbit8d-binaural";
 const START_LATENCY_S = 0.06;
 const FADE_IN_S = 0.01;
 const FADE_OUT_S = 0.015; // 必须小于 START_LATENCY_S：跳转时旧的淡出先结束，新的才开始
@@ -21,19 +20,6 @@ const AB_FADE_S = 0.04;
 const LIMITER = { threshold: -1, knee: 0, ratio: 20, attack: 0.001, release: 0.1 };
 const METER_FFT = 2048;
 const METER_FLOOR_DB = -90;
-
-/** 试听文件名（后端 PREVIEW_NAMES）→ 在 9 声道缓冲中的起始声道。 */
-const STEM_LAYOUT: ReadonlyArray<{ name: string; channel: number; channels: 1 | 2 }> = [
-  { name: "vocals_hi", channel: 0, channels: 1 },
-  { name: "bass_hi", channel: 1, channels: 1 },
-  { name: "drums_hi", channel: 2, channels: 2 },
-  { name: "other_hi", channel: 4, channels: 2 },
-  { name: "bass_sub", channel: 6, channels: 1 },
-  { name: "drums_sub", channel: 7, channels: 1 },
-  { name: "other_sub", channel: 8, channels: 1 },
-];
-
-export const STEM_NAMES = STEM_LAYOUT.map((s) => s.name);
 
 export class AudioEngine {
   readonly ctx: AudioContext;

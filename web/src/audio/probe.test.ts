@@ -7,8 +7,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { CalibrationKey, Scene } from "../types";
-import { AudioEngine, SAMPLE_RATE, STEM_NAMES } from "./engine";
-import { buildRenderParams, type RenderParams } from "./params";
+import { AudioEngine, SAMPLE_RATE } from "./engine";
+import { STEM_NAMES, buildRenderParams, type RenderParams } from "./params";
 import { FakeAudioContext, drain, encodeAudio, installFakeWebAudio, num, registeredProcessors } from "./testing/fake-webaudio";
 
 const shared = (name: string) => fileURLToPath(new URL(`../../../shared/golden/${name}`, import.meta.url));

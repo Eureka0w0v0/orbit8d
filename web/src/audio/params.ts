@@ -6,7 +6,10 @@ import { compileTrack, compileWet, type TrackMotion, type WetCurve } from "../or
 import type { CalibrationKey, Scene, TrackName } from "../types";
 import { TRACKS } from "../types";
 
-/** 试听缓冲区的 9 个声道（顺序即 AudioBuffer 的声道顺序）。 */
+/** AudioWorklet 处理器的注册名：主线程建节点、Worklet 里注册，两边都从这里取（不能互相 import：加载 worklet 模块就会注册）。 */
+export const PROCESSOR_NAME = "orbit8d-binaural";
+
+/** 试听缓冲区的 9 个声道（顺序即 AudioBuffer 的声道顺序，与后端 SOURCE_CHANNELS 一致）。 */
 export const INPUT_CHANNELS = [
   "vocals_hi",
   "bass_hi",
@@ -18,6 +21,22 @@ export const INPUT_CHANNELS = [
   "drums_sub",
   "other_sub",
 ] as const;
+
+/** 三路超低频（bass_sub、drums_sub、other_sub）在 9 声道里连着放，这是第一路的位置。 */
+export const SUB_CHANNEL0 = INPUT_CHANNELS.indexOf("bass_sub");
+
+/** 试听文件（后端 PREVIEW_FILES）→ 在 9 声道缓冲中的起始声道与声道数。 */
+export const STEM_LAYOUT: ReadonlyArray<{ name: string; channel: number; channels: 1 | 2 }> = [
+  { name: "vocals_hi", channel: 0, channels: 1 },
+  { name: "bass_hi", channel: 1, channels: 1 },
+  { name: "drums_hi", channel: 2, channels: 2 },
+  { name: "other_hi", channel: 4, channels: 2 },
+  { name: "bass_sub", channel: 6, channels: 1 },
+  { name: "drums_sub", channel: 7, channels: 1 },
+  { name: "other_sub", channel: 8, channels: 1 },
+];
+
+export const STEM_NAMES = STEM_LAYOUT.map((s) => s.name);
 
 export interface SourceParams {
   track: TrackName;

@@ -2,8 +2,8 @@
 
 import { ApiError, api, poll } from "./api";
 import { T, errorText, lang, switchLang, type Lang } from "./i18n";
-import { AudioEngine, STEM_NAMES } from "./audio/engine";
-import { buildRenderParams, compileMotions } from "./audio/params";
+import { AudioEngine } from "./audio/engine";
+import { STEM_NAMES, buildRenderParams, compileMotions } from "./audio/params";
 import { toOrbitParams, type OrbitParams } from "./orbit/orbit";
 import { phaseAt, type TrackMotion } from "./orbit/timeline";
 import { Dome } from "./scene/dome";
