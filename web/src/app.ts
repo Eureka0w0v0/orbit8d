@@ -31,6 +31,7 @@ import { loadHead } from "./scene/head";
 import { visualRadius } from "./scene/mapping";
 import { OrbitView } from "./scene/orbits";
 import { Stage } from "./scene/stage";
+import { Autosave, type SaveState } from "./session/autosave";
 import type { EventKind, ExportFormat, Loudness, Mix, Orbit, Project, ProjectSummary, Room, RoomName, Scene, Speed, TrackName } from "./types";
 import { TRACKS } from "./types";
 import { h } from "./ui/dom";
@@ -48,14 +49,10 @@ const LAST_PROJECT_KEY = "orbit8d.lastProject";
 const DOME_KEY = "orbit8d.showDome";
 const TOAST_MS = 4000;
 const EQ_DEBOUNCE_MS = 250;
-const SAVE_DEBOUNCE_MS = 800;
-const SAVE_RETRY_MS = 5000;
 const ORIGINAL_PREVIEW = "original";
 const SEEK_STEP_S = 5;
 const DEFAULT_RADIUS_M = 1.2; // 还没打开歌时三层半球按默认轨道距离画（与后端 Orbit.radius_m 默认值一致）
 const STEREO: ReadonlySet<TrackName> = new Set(["drums", "other"]);
-
-type SaveState = "saved" | "saving" | "failed";
 
 function editMessage(reason: EditReason): string {
   if (reason === "maxSections") return T.edit.maxSections(MAX_SECTIONS);
@@ -89,9 +86,13 @@ export class App {
   private drawnTime = Number.NaN; // 3D 上一次画的是哪个时刻（按需重画用）
   private resumeAfterScrub = false;
   private readonly history = new History<Scene>();
-  private saveTimer = 0;
-  private saveSeq = 0;
-  private pendingSave: { projectId: string; scene: Scene } | null = null;
+  private readonly autosave = new Autosave({
+    save: (job, keepalive) => api.saveScene(job.projectId, job.scene, keepalive),
+    onState: (state) => this.showSaveState(state),
+    onError: (err) => console.warn("[orbit8d] saving the scene failed, retrying later", err),
+    setTimer: (fn, ms) => window.setTimeout(fn, ms),
+    clearTimer: (id) => window.clearTimeout(id),
+  });
   private readonly brirCache = new Map<RoomName, ArrayBuffer>();
   private loadedRoom: RoomName | null = null;
   private readonly views = new Map<TrackName, OrbitView>();
@@ -150,7 +151,7 @@ export class App {
     this.transport = new Transport(() => void this.togglePlay(), this.timeline.el, () => this.toggleListen());
     const badge = h("div", { class: "listen-badge" }, TEXT.listeningOriginal);
     root.replaceChildren(viewport, badge, header, this.songMenu.el, this.transport.el, h("p", { class: "credits" }, TEXT.credits), this.overlay.el, this.exportDialog.el, this.toastBox);
-    window.addEventListener("pagehide", () => void this.flushSave(true)); // 关页面前把没存的改动发出去
+    window.addEventListener("pagehide", () => void this.autosave.flush(true)); // 关页面前把没存的改动发出去
     this.overlay.showProgress(TEXT.starting, null);
 
     try {
@@ -276,12 +277,9 @@ export class App {
   /** 删歌（连同导出）。删的是正在用的歌：没存的改动直接丢掉，回到导入页。 */
   private async deleteSong(song: ProjectSummary): Promise<void> {
     const current = this.project?.id === song.id;
-    if (current) {
-      window.clearTimeout(this.saveTimer);
-      this.pendingSave = null;
-    }
+    const remove = () => api.deleteProject(song.id);
     try {
-      await api.deleteProject(song.id);
+      await (current ? this.autosave.discardWhile(remove) : remove());
     } catch (err) {
       this.toast(describe(err));
       if (this.songMenu.isOpen) await this.songMenu.refresh();
@@ -360,7 +358,7 @@ export class App {
     if (!analysis) throw new Error("The project has no analysis");
     this.go("loading");
     this.overlay.showProgress(TEXT.loadingAudio, null, project.source.filename);
-    await this.flushSave(); // 换歌前先把上一首没存的改动存掉
+    await this.autosave.flush(); // 换歌前先把上一首没存的改动存掉
     const [buffers, original] = await Promise.all([
       Promise.all(STEM_NAMES.map(async (n) => [n, await api.stem(project.id, n)] as const)),
       api.stem(project.id, ORIGINAL_PREVIEW),
@@ -382,7 +380,7 @@ export class App {
     this.applyScene(scene, { record: false, save: false, refreshEq: false });
     for (const view of this.views.values()) view.group.visible = true;
     this.stage.invalidate();
-    this.setSaveState("saved");
+    this.autosave.opened();
     this.title.textContent = project.source.title
       ? `${project.source.artist ? `${project.source.artist} - ` : ""}${project.source.title}`
       : project.source.filename;
@@ -502,7 +500,7 @@ export class App {
   // ---------- 语言：先把没存的改动存掉，再记住选择并刷新页面 ----------
   private async changeLanguage(next: Lang): Promise<void> {
     if (next === lang) return;
-    await this.flushSave();
+    await this.autosave.flush();
     switchLang(next);
   }
 
@@ -528,34 +526,13 @@ export class App {
     this.redoButton.disabled = !this.history.canRedo;
   }
 
-  // ---------- 自动保存（整份替换，只保存最后一次；失败隔几秒重试） ----------
+  // ---------- 自动保存（规则在 session/autosave.ts；这里只交出最新的场景、显示状态） ----------
   private scheduleSave(): void {
     if (!this.project || !this.scene) return;
-    this.pendingSave = { projectId: this.project.id, scene: this.scene };
-    this.setSaveState("saving");
-    window.clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(() => void this.flushSave(), SAVE_DEBOUNCE_MS);
+    this.autosave.changed({ projectId: this.project.id, scene: this.scene });
   }
 
-  private async flushSave(keepalive = false): Promise<void> {
-    window.clearTimeout(this.saveTimer);
-    const job = this.pendingSave;
-    if (!job) return;
-    this.pendingSave = null;
-    const seq = ++this.saveSeq;
-    try {
-      await api.saveScene(job.projectId, job.scene, keepalive);
-      if (seq === this.saveSeq && !this.pendingSave) this.setSaveState("saved");
-    } catch (err) {
-      console.warn("[orbit8d] saving the scene failed, retrying later", err);
-      if (seq !== this.saveSeq) return; // 已经有更新的保存在进行
-      this.pendingSave ??= job;
-      this.setSaveState("failed");
-      this.saveTimer = window.setTimeout(() => void this.flushSave(), SAVE_RETRY_MS);
-    }
-  }
-
-  private setSaveState(state: SaveState): void {
+  private showSaveState(state: SaveState): void {
     this.saveStatus.textContent = state === "saved" ? TEXT.saved : state === "saving" ? TEXT.saving : TEXT.saveFailed;
     this.saveStatus.dataset.state = state;
   }
