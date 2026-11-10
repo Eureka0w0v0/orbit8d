@@ -105,6 +105,51 @@ def test_failed_song_imported_again_is_retried_until_ready(client, tmp_path, mon
     assert body["state"] == "READY" and body["error"] is None and client.separator.calls == 1
 
 
+def test_reimporting_a_failed_song_while_the_worker_is_busy_shows_it_queued(client, tmp_path, monkeypatch):
+    """歌 B 失败过（界面说“重新导入即可重试”）。工位正忙着另一首歌时重新导入 B，重试只能先排队：
+    接口要当场说“已排上了”（UPLOADED、旧错误清掉），不能把上次的 FAILED 原样交回去——前端第一次轮询
+    看到 FAILED 就报错，其实任务在排队（SPEC §6：FAILED → UPLOADED）。"""
+    import threading
+
+    from orbit8d.separate.model import ModelDownloadError
+
+    started, release = threading.Event(), threading.Event()
+    separator = client.separator
+    separate = separator.separate
+
+    def offline(on_progress):
+        raise ModelDownloadError("simulated network failure")
+
+    def held_up(wav, out_dir, on_progress):
+        started.set()
+        assert release.wait(WAIT_S)
+        separate(wav, out_dir, on_progress)
+
+    failed_song = write_song(tmp_path / "b.wav", seed=1)
+    with monkeypatch.context() as m:
+        m.setattr(separator, "ensure_model", offline)
+        pid = upload(client, failed_song).json()["id"]
+        wait_idle(client)
+    assert client.get(f"/api/projects/{pid}").json()["error"]["code"] == "MODEL_DOWNLOAD_FAILED"
+
+    monkeypatch.setattr(separator, "separate", held_up)
+    assert upload(client, write_song(tmp_path / "a.wav", seed=2)).status_code == 202
+    assert started.wait(WAIT_S)  # 工位正在给另一首歌分轨
+    try:
+        again = upload(client, failed_song)
+        polled = client.get(f"/api/projects/{pid}").json()
+        once_more = upload(client, failed_song)  # 已经在排队：不再排第二次
+    finally:
+        release.set()
+        wait_idle(client)
+    assert again.status_code == 200 and again.json()["id"] == pid
+    assert (again.json()["state"], again.json()["error"]) == ("UPLOADED", None)
+    assert (polled["state"], polled["error"]) == ("UPLOADED", None)
+    assert once_more.json()["state"] == "UPLOADED"
+    done = client.get(f"/api/projects/{pid}").json()
+    assert done["state"] == "READY" and done["error"] is None and separator.calls == 2
+
+
 def test_non_audio_upload_is_rejected_without_leftovers(client, data_dir, tmp_path):
     bad = tmp_path / "evil.mp3"
     bad.write_text("not audio at all")

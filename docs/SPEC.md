@@ -172,7 +172,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | SEPARATING | ANALYZING, FAILED |
 | ANALYZING | READY, FAILED |
 | READY | ANALYZING（分析算法升级：服务启动时自动重新分析，沿用已有分轨） |
-| FAILED | DECODING（同一文件重新导入时重试） |
+| FAILED | UPLOADED（同一文件重新导入时重试：接口当场把它转回“已上传”、清掉旧错误，再排队分析；工位正忙时界面看到的是排队，而不是上次的失败） |
 
 导出：
 | 当前 | 允许的下一个 |

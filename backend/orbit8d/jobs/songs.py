@@ -36,7 +36,8 @@ class Songs:
 
     def add(self, upload: Upload) -> tuple[ProjectRecord, bool]:
         """收下一首歌，返回 (记录, 是不是新建的)。项目 ID 取内容哈希：同一个文件再传一次还是同一首歌，
-        已有的直接返回，失败过的重新排队分析。探测格式比较慢，放在锁外面做。"""
+        已有的直接返回；失败过的当场转回“已上传”（旧错误清掉）再排队分析，所以返回的记录就是排队中的样子。
+        探测格式比较慢，放在锁外面做。"""
         pid = upload.sha256[:ID_LEN]
         info = None if self._store.find_project(pid) else probe(upload.path)
         if info and info.duration_s > self._max_duration_s:
@@ -45,6 +46,7 @@ class Songs:
             existing = self._store.find_project(pid)
             if existing:
                 if existing.state is ProjectState.FAILED and not self._runner.busy(pid):
+                    existing = self._store.transition_project(pid, ProjectState.UPLOADED)
                     self._runner.submit(JobKind.ANALYSIS, pid, pid)
                 return existing, False
             if info is None:  # 查的时候还在、加锁前被删了：按新歌再来一次
