@@ -12,13 +12,16 @@ import { DICTIONARIES, LANGS, errorText } from "./i18n";
 import { MAX_EVENTS, MAX_SECTIONS } from "./scene/edit";
 import { LAYERS, type LayerName } from "./scene/layers";
 import type {
+  Analysis,
   Bars,
   EventKind,
   ExportFormat,
+  ExportRecord,
   ExportState,
   Loudness,
   Mix,
   Orbit,
+  Project,
   ProjectState,
   Room,
   RoomName,
@@ -26,6 +29,7 @@ import type {
   SceneEvent,
   Section,
   Shape,
+  SourceInfo,
   Speed,
   TrackName,
 } from "./types";
@@ -50,6 +54,7 @@ interface Contract {
   layer_heights: Record<string, number>;
   limits: { max_sections: number; max_events: number };
   error_codes: string[];
+  record_fields: Record<"project" | "source" | "analysis" | "export", string[]>;
   scene_schema: ObjectSchema & { $defs: Record<string, ObjectSchema> }; // = GET /api/scene/schema
 }
 
@@ -110,6 +115,56 @@ const SCENE_FIELDS: Record<string, object> = {
   Room: { name: true } satisfies Record<keyof Room, true>,
 };
 
+/** 前端从接口记录里读的字段（TS 接口的键）。后端记录可以多出前端不用的字段，但前端读的每一个都必须存在。 */
+const RECORD_FIELDS: Record<keyof Contract["record_fields"], object> = {
+  project: {
+    id: true,
+    state: true,
+    progress: true,
+    step: true,
+    error: true,
+    source: true,
+    analysis: true,
+    preview_scale: true,
+  } satisfies Record<keyof Project, true>,
+  source: {
+    filename: true,
+    size: true,
+    duration_s: true,
+    title: true,
+    artist: true,
+    album: true,
+    has_cover: true,
+  } satisfies Record<keyof SourceInfo, true>,
+  analysis: {
+    sample_rate: true,
+    duration_s: true,
+    bpm: true,
+    bpm_norm: true,
+    default_bars: true,
+    t_ref: true,
+    calibration: true,
+    preview_gain: true,
+    match_eq_db: true,
+    spectra: true,
+    sections: true,
+    original_gain: true,
+    envelope_db: true,
+    envelope_hop_s: true,
+    version: true,
+  } satisfies Record<keyof Analysis, true>,
+  export: {
+    id: true,
+    project_id: true,
+    state: true,
+    format: true,
+    loudness: true,
+    progress: true,
+    error: true,
+    file_name: true,
+  } satisfies Record<keyof ExportRecord, true>,
+};
+
 const propertiesOf = (def: string) => (def === "Scene" ? schema.properties : schema.$defs[def].properties);
 const schemaDefs = () => ["Scene", ...Object.keys(schema.$defs)];
 
@@ -149,6 +204,14 @@ describe("前后端契约（shared/golden/contract.json）", () => {
     expect(Object.keys(SCENE_FIELDS).sort()).toEqual(schemaDefs().sort());
     for (const [def, fields] of Object.entries(SCENE_FIELDS)) expect(keys(fields), def).toEqual(Object.keys(propertiesOf(def)).sort());
     for (const def of Object.keys(SCHEMA_DEFS)) expect(Object.keys(schema.$defs), def).toContain(def);
+  });
+
+  it("接口记录：前端读的字段后端都有；分析结果的字段两边完全一致", () => {
+    expect(Object.keys(RECORD_FIELDS).sort()).toEqual(Object.keys(contract.record_fields).sort());
+    for (const [record, fields] of Object.entries(RECORD_FIELDS)) {
+      expect(contract.record_fields[record as keyof typeof RECORD_FIELDS], record).toEqual(expect.arrayContaining(keys(fields)));
+    }
+    expect(keys(RECORD_FIELDS.analysis)).toEqual([...contract.record_fields.analysis].sort());
   });
 
   it("试听：9 声道顺序、要下载的试听文件、采样率", () => {

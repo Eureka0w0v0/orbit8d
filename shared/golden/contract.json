@@ -138,6 +138,62 @@
   "UNSUPPORTED_CODEC",
   "UNSUPPORTED_FORMAT"
  ],
+ "record_fields": {
+  "project": [
+   "id",
+   "state",
+   "source",
+   "progress",
+   "step",
+   "error",
+   "analysis",
+   "preview_scale",
+   "stem_scales",
+   "created_at",
+   "updated_at"
+  ],
+  "source": [
+   "filename",
+   "size",
+   "sha256",
+   "codec",
+   "duration_s",
+   "title",
+   "artist",
+   "album",
+   "has_cover"
+  ],
+  "analysis": [
+   "sample_rate",
+   "duration_s",
+   "bpm",
+   "bpm_norm",
+   "default_bars",
+   "t_ref",
+   "calibration",
+   "preview_gain",
+   "match_eq_db",
+   "spectra",
+   "sections",
+   "original_gain",
+   "envelope_db",
+   "envelope_hop_s",
+   "version"
+  ],
+  "export": [
+   "id",
+   "project_id",
+   "state",
+   "format",
+   "scene",
+   "loudness",
+   "progress",
+   "error",
+   "file_name",
+   "created_at",
+   "updated_at"
+  ]
+ },
  "scene_schema": {
   "$defs": {
    "Event": {

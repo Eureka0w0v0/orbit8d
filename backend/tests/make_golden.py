@@ -9,6 +9,7 @@ contract.json 是前后端共享的枚举、布局、上限与错误码（后端
 import ast
 import json
 import re
+from dataclasses import fields
 from pathlib import Path
 
 import numpy as np
@@ -18,7 +19,7 @@ from orbit8d.config import SAMPLE_RATE
 from orbit8d.engine.hrtf import HrtfGrid, to_bytes
 from orbit8d.engine.master import LOUDNESS_TARGETS
 from orbit8d.engine.orbit import BAR_CHOICES, SHAPES, OrbitParams, orbit_position
-from orbit8d.engine.pipeline import PREVIEW_FILES, SOURCE_CHANNELS, Renderer, Sources
+from orbit8d.engine.pipeline import PREVIEW_FILES, SOURCE_CHANNELS, Analysis, Renderer, Sources
 from orbit8d.engine.render import MAX_DISTANCE_M, MIN_DISTANCE_M
 from orbit8d.engine.reverb import ROOMS
 from orbit8d.engine.scene import (
@@ -37,6 +38,7 @@ from orbit8d.engine.scene import (
 from orbit8d.engine.timeline import compile_track, track_position, wet_db_curve
 from orbit8d.jobs.layout import ORIGINAL_PREVIEW
 from orbit8d.jobs.states import ExportState, ProjectState
+from orbit8d.jobs.store import ExportRecord, ProjectRecord, SourceInfo
 from orbit8d.jobs.worker import STEP_MODEL_DOWNLOAD
 from orbit8d.media.ffmpeg import OUTPUT_FORMATS
 
@@ -403,6 +405,13 @@ def contract() -> dict:
             "distance_m": [MIN_DISTANCE_M, MAX_DISTANCE_M],  # 渲染时距离增益的钳位
         },
         "error_codes": error_codes(),
+        # 接口返回的记录各有哪些字段（GET /api/projects/{id}、/api/exports/{id}）；前端读的字段必须都在里面
+        "record_fields": {
+            "project": [f.name for f in fields(ProjectRecord)],
+            "source": [f.name for f in fields(SourceInfo)],
+            "analysis": [f.name for f in fields(Analysis)],
+            "export": [f.name for f in fields(ExportRecord)],
+        },
         "scene_schema": Scene.model_json_schema(),
     }
 
