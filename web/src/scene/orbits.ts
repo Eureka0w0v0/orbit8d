@@ -7,16 +7,10 @@ import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { positionAtPhase, type OrbitParams, type Position } from "../orbit/orbit";
+import { TRACK_COLORS } from "../model/tracks";
 import { trackPosition, type TrackMotion } from "../orbit/timeline";
 import type { TrackName } from "../types";
 import { directionToWorld, visualRadius, type Vec3 } from "./mapping";
-
-export const TRACK_COLORS: Record<TrackName, number> = {
-  vocals: 0xff6b9a,
-  drums: 0xffc24b,
-  bass: 0x8f7dff,
-  other: 0x35d6c3,
-};
 
 const PATH_SEGMENTS = 360;
 const SPIRAL_CYCLES = 4;

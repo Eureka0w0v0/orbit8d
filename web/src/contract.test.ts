@@ -9,8 +9,8 @@ import { describe, expect, it } from "vitest";
 import { SAMPLE_RATE, STEM_NAMES } from "./audio/engine";
 import { INPUT_CHANNELS } from "./audio/params";
 import { DICTIONARIES, LANGS, errorText } from "./i18n";
-import { MAX_EVENTS, MAX_SECTIONS } from "./scene/edit";
-import { LAYERS, type LayerName } from "./scene/layers";
+import { MAX_EVENTS, MAX_SECTIONS } from "./model/edit";
+import { LAYERS, type LayerName } from "./model/layers";
 import type {
   Analysis,
   Bars,

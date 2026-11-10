@@ -1,6 +1,7 @@
 // 场景 → 渲染参数。与 backend/orbit8d/engine/pipeline.py 的 render_tracks / send_signal 逐项对应。
 // 轨道运动（含分段过渡、停顿、飞过头顶）与分段混响量都预先编译成纯数据，整包 postMessage 给 AudioWorklet。
 
+import { effectiveTrackGains } from "../model/mix";
 import { compileTrack, compileWet, type TrackMotion, type WetCurve } from "../orbit/timeline";
 import type { CalibrationKey, Scene, TrackName } from "../types";
 import { TRACKS } from "../types";
@@ -49,18 +50,6 @@ const SOURCE_LAYOUT: ReadonlyArray<{ track: TrackName; channel: number; side: -1
   { track: "other", channel: 4, side: -1, share: 0.5 },
   { track: "other", channel: 5, side: 1, share: 0.5 },
 ];
-
-/** 用户音量 × 静音/独奏：只要有音轨独奏，其余音轨全部静音。 */
-export function effectiveTrackGains(scene: Scene): Record<TrackName, number> {
-  const anySolo = TRACKS.some((n) => scene.mix[n].solo);
-  const out = {} as Record<TrackName, number>;
-  for (const name of TRACKS) {
-    const m = scene.mix[name];
-    const audible = !m.mute && (m.solo || !anySolo);
-    out[name] = audible ? 10 ** (m.gain_db / 20) : 0;
-  }
-  return out;
-}
 
 export function compileMotions(scene: Scene, timing: Timing): Record<TrackName, TrackMotion> {
   const out = {} as Record<TrackName, TrackMotion>;

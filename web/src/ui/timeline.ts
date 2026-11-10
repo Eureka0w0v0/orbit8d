@@ -1,9 +1,9 @@
 // 播放条里的时间轴：段落色块 + 原曲音量起伏 + 事件条 + 播放头。
 // 点色块跳到那里，按住左右拖可以预览（松手才真正跳过去）；拖段落之间的竖线调整分界；拖事件条移动、拖事件条右边缘改长短（吸附到拍，按住 ⌥ 自由），
-// 点一下事件条选中它（Delete 删除）。数值合法性（吸附、不重叠）由 App 调 scene/edit.ts 保证。
+// 点一下事件条选中它（Delete 删除）。数值合法性（吸附、不重叠）由 App 调 model/edit.ts 保证。
 
 import { sectionName } from "../i18n";
-import { eventAnchor } from "../scene/edit";
+import { eventAnchor } from "../model/edit";
 import type { Scene } from "../types";
 import { fmt, h } from "./dom";
 import { DEFAULT_SECTION_COLOR, EVENT_LABEL, SECTION_COLORS, TEXT, TRACK_LABEL } from "./labels";

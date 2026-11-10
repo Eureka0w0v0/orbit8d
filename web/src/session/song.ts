@@ -2,7 +2,7 @@
 // 这几样要么都有、要么都没有，而且打开期间不变，所以合成一个只读的整体，由 openSong 一次建好。
 
 import type { Timing } from "../audio/params";
-import { barGrid, type BarGrid } from "../scene/edit";
+import { barGrid, type BarGrid } from "../model/edit";
 import type { Analysis, Project, SourceInfo } from "../types";
 
 export interface OpenSong {

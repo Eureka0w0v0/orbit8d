@@ -1,13 +1,13 @@
 // 左侧音轨面板与右侧参数面板（分【轨道】【混音】【段落】【空间】四页）。
 // 轨道参数改的是“播放头所在的那一段”；混音、房间是全曲共用的。面板只负责显示与收集操作，改数据统一交给 App。
 
-import { effectiveTrackGains } from "../audio/params";
 import { T, directionName, presetName, sectionName } from "../i18n";
+import { eventsIn, sectionEnd } from "../model/edit";
+import { LAYERS, layerOf } from "../model/layers";
+import { effectiveTrackGains } from "../model/mix";
+import { STEREO_TRACKS, TRACK_COLORS } from "../model/tracks";
 import { DIRECTIONS, matchDirection, orientationFromTilt, tiltFromOrientation } from "../orbit/orientation";
 import { barSeconds } from "../orbit/timeline";
-import { eventsIn, sectionEnd } from "../scene/edit";
-import { LAYERS, layerOf } from "../scene/layers";
-import { TRACK_COLORS } from "../scene/orbits";
 import type { Analysis, Bars, EventKind, Mix, Orbit, Room, RoomName, Scene, Shape, Speed, TrackName } from "../types";
 import { TRACKS } from "../types";
 import type { SchemaDef, SchemaRanges } from "./schema";
@@ -25,7 +25,6 @@ import {
 } from "./labels";
 import { TiltPad } from "./tiltpad";
 
-const STEREO_TRACKS: ReadonlySet<TrackName> = new Set(["drums", "other"]);
 const SHAPES: Shape[] = ["circle", "ellipse", "pendulum", "figure8", "spiral", "fixed"];
 const BAR_CHOICES: Bars[] = [1, 2, 4, 8];
 const ROOMS: RoomName[] = ["room", "hall", "church"];

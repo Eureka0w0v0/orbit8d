@@ -3,7 +3,7 @@
 import { ApiError, api, poll } from "./api";
 import { T, errorText, lang, switchLang, type Lang } from "./i18n";
 import { AudioEngine, STEM_NAMES, type ListenMode } from "./audio/engine";
-import { buildRenderParams, compileMotions, effectiveTrackGains } from "./audio/params";
+import { buildRenderParams, compileMotions } from "./audio/params";
 import { toOrbitParams, type OrbitParams } from "./orbit/orbit";
 import { phaseAt, type TrackMotion } from "./orbit/timeline";
 import { Dome } from "./scene/dome";
@@ -21,10 +21,12 @@ import {
   splitAt,
   type EditReason,
   type EditResult,
-} from "./scene/edit";
-import { History } from "./scene/history";
+} from "./model/edit";
+import { History } from "./model/history";
+import { layerOf } from "./model/layers";
+import { effectiveTrackGains } from "./model/mix";
+import { STEREO_TRACKS } from "./model/tracks";
 import { Handles } from "./scene/handles";
-import { layerOf } from "./scene/layers";
 import { loadHead } from "./scene/head";
 import { visualRadius } from "./scene/mapping";
 import { OrbitView } from "./scene/orbits";
@@ -52,7 +54,6 @@ const TOAST_MS = 4000;
 const ORIGINAL_PREVIEW = "original";
 const SEEK_STEP_S = 5;
 const DEFAULT_RADIUS_M = 1.2; // 还没打开歌时三层半球按默认轨道距离画（与后端 Orbit.radius_m 默认值一致）
-const STEREO: ReadonlySet<TrackName> = new Set(["drums", "other"]);
 
 function editMessage(reason: EditReason): string {
   if (reason === "maxSections") return T.edit.maxSections(MAX_SECTIONS);
@@ -603,7 +604,7 @@ export class App {
       this.views.get(track)?.update({
         params: this.orbitParams(track),
         widthDeg: scene.mix[track].width_deg,
-        stereo: STEREO.has(track),
+        stereo: STEREO_TRACKS.has(track),
         audible: gains[track] > 0,
         selected: track === this.selected,
       });

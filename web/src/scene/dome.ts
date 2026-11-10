@@ -3,7 +3,7 @@
 
 import * as THREE from "three";
 import { T } from "../i18n";
-import { LAYERS, type LayerName } from "./layers";
+import { LAYERS, type LayerName } from "../model/layers";
 import { directionToWorld } from "./mapping";
 
 const SEGMENTS = 128;

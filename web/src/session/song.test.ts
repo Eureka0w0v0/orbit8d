@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { barGrid } from "../scene/edit";
+import { barGrid } from "../model/edit";
 import type { Analysis, Project } from "../types";
 import { openSong, titleOf } from "./song";
 
