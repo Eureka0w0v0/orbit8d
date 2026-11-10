@@ -3,7 +3,6 @@
 import hashlib
 import io
 import logging
-import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,27 +23,19 @@ from orbit8d.config import REPO_ROOT, SAMPLE_RATE, Settings
 from orbit8d.engine.choreo import choreograph, rechoreograph
 from orbit8d.engine.hrtf import load_grid, to_bytes
 from orbit8d.engine.orbit import BAR_CHOICES
-from orbit8d.engine.pipeline import RENDER_VERSION, Analysis, Renderer
+from orbit8d.engine.pipeline import Renderer
 from orbit8d.engine.reverb import ROOMS
 from orbit8d.engine.scene import PRESETS, Scene, canonical_json, preset
 from orbit8d.engine.structure import SectionInfo
 from orbit8d.jobs.layout import ORIGINAL_PREVIEW
-from orbit8d.jobs.states import ExportState, ProjectState, is_terminal
-from orbit8d.jobs.store import (
-    UPLOAD_SUFFIX,
-    ExportRecord,
-    NotFound,
-    ProjectRecord,
-    SourceInfo,
-    Store,
-    safe_name,
-)
-from orbit8d.jobs.worker import JobKind, JobRunner, Separator
-from orbit8d.media.ffmpeg import OUTPUT_FORMATS, available_formats, probe
+from orbit8d.jobs.songs import Songs, Upload
+from orbit8d.jobs.states import ExportState
+from orbit8d.jobs.store import NotFound, ProjectRecord, Store, safe_name
+from orbit8d.jobs.worker import JobRunner, Separator
+from orbit8d.media.ffmpeg import OUTPUT_FORMATS, available_formats
 
 log = logging.getLogger(__name__)
 
-ID_LEN = 16
 FILENAME_HEADER = "x-filename"
 PREVIEW_NAMES = frozenset(
     {"vocals_hi", "bass_hi", "drums_hi", "other_hi", "bass_sub", "drums_sub", "other_sub", ORIGINAL_PREVIEW}
@@ -102,6 +93,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         runner.refresh_stale()
         runner.start()
         app.state.store, app.state.runner, app.state.renderer = store, runner, renderer
+        app.state.songs = Songs(store, runner, settings.max_duration_s)
         app.state.hrtf_bytes = to_bytes(grid)
         log.info("server ready", extra={"event": "server.ready", "port": settings.port})
         try:
@@ -145,7 +137,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         if declared and declared.isdigit() and int(declared) > settings.max_upload_bytes:
             raise ApiError(413, "TOO_LARGE", "The file is too large")
         name = safe_name(Path(unquote(request.headers.get(FILENAME_HEADER, ""))).name)
-        tmp = settings.uploads_dir / f"{uuid.uuid4().hex}{UPLOAD_SUFFIX}"
+        tmp = store.new_upload()
         digest, size = hashlib.sha256(), 0
         try:
             with tmp.open("wb") as f:
@@ -157,54 +149,13 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
                     f.write(chunk)
             if size == 0:
                 raise ApiError(400, "EMPTY", "The file is empty")
-            pid = digest.hexdigest()[:ID_LEN]
-            existing = store.find_project(pid)
-            info = None if existing else await run_in_threadpool(probe, tmp)
-            if info and info.duration_s > settings.max_duration_s:
-                raise ApiError(
-                    400, "TOO_LONG", f"The song is longer than {settings.max_duration_s / 60:.0f} minutes"
-                )
-            with store.lock:  # 与删歌互斥：查记录、建记录、排任务一起做
-                rec, status = register_upload(request, pid, tmp, info, name, size, digest.hexdigest())
-            log.info("project uploaded", extra={"event": "project.upload", "project_id": pid, "bytes": size})
-            return JSONResponse(rec.to_dict(), status_code=status)
+            songs: Songs = request.app.state.songs
+            rec, created = await run_in_threadpool(songs.add, Upload(tmp, name, size, digest.hexdigest()))
+            extra = {"event": "project.upload", "project_id": rec.id, "bytes": size}
+            log.info("project uploaded", extra=extra)
+            return JSONResponse(rec.to_dict(), status_code=202 if created else 200)
         finally:
             tmp.unlink(missing_ok=True)
-
-    def register_upload(
-        request: Request, pid: str, tmp: Path, info, name: str, size: int, sha256: str
-    ) -> tuple[ProjectRecord, int]:
-        """已有这首歌：失败过就重试，返回 200；没有：建项目、排分析，返回 202。"""
-        runner = request.app.state.runner
-        existing = store.find_project(pid)
-        if existing:
-            if existing.state is ProjectState.FAILED and not runner.busy(pid):
-                runner.submit(JobKind.ANALYSIS, pid, pid)
-            return existing, 200
-        if info is None:  # 查的时候还在、加锁前被删了：按新歌再来一次
-            raise ApiError(409, "PROJECT_BUSY", "The song was just deleted; import it again")
-        files = store.project_files(pid)
-        files.root.mkdir(parents=True, exist_ok=True)
-        tmp.replace(files.source)
-        rec, _ = store.create_project_if_absent(
-            ProjectRecord(
-                id=pid,
-                state=ProjectState.UPLOADED,
-                source=SourceInfo(
-                    filename=name,
-                    size=size,
-                    sha256=sha256,
-                    codec=info.codec,
-                    duration_s=info.duration_s,
-                    title=info.title,
-                    artist=info.artist,
-                    album=info.album,
-                    has_cover=info.has_cover,
-                ),
-            )
-        )
-        runner.submit(JobKind.ANALYSIS, pid, pid)
-        return rec, 202
 
     @app.get("/api/projects")
     def list_projects() -> list[dict]:
@@ -215,35 +166,24 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     @app.delete("/api/projects/{pid}", status_code=204)
     def delete_project(request: Request, pid: str) -> Response:
         """连同它的导出一起删。还有任务（分析中、排队导出等）时 409，不删半截。"""
-        with store.lock:
-            rec = store.get_project(pid)
-            if request.app.state.runner.busy(pid) or not is_terminal(rec.state):
-                raise ApiError(409, "PROJECT_BUSY", "The song is still being processed")
-            moved = store.trash_project(pid)
-        store.empty_trash(moved)
+        request.app.state.songs.delete(pid)
         return Response(status_code=204)
 
     @app.get("/api/projects/{pid}")
     def get_project(pid: str) -> dict:
         return store.get_project(pid).to_dict()
 
-    def ready_analysis(pid: str) -> Analysis:
-        rec = store.get_project(pid)
-        if rec.state is not ProjectState.READY:
-            raise ApiError(409, "PROJECT_NOT_READY", "Still processing")
-        return Analysis(**rec.analysis)
-
     @app.get("/api/projects/{pid}/choreography")
-    def get_choreography(pid: str) -> dict:
+    def get_choreography(request: Request, pid: str) -> dict:
         """按自动识别的段落编排好的场景（前端“自动编排”按钮、新项目的默认场景）。"""
-        a = ready_analysis(pid)
+        a = request.app.state.songs.analysis(pid)
         sections = [SectionInfo(**d) for d in a.sections]
         return choreograph(sections, a.default_bars, a.bpm_norm).model_dump(mode="json")
 
     @app.post("/api/projects/{pid}/choreography")
-    def post_choreography(pid: str, body: SceneRequest) -> dict:
+    def post_choreography(request: Request, pid: str, body: SceneRequest) -> dict:
         """✨ 自动编排：沿用这个场景的分界与段名重新编排（只换各段轨道、混响量与事件）。"""
-        a = ready_analysis(pid)
+        a = request.app.state.songs.analysis(pid)
         scene = rechoreograph(
             body.scene, a.duration_s, a.default_bars, a.bpm_norm, a.envelope_db, a.envelope_hop_s
         )
@@ -252,15 +192,15 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     @app.post("/api/projects/{pid}/eq")
     def post_scene_eq(request: Request, pid: str, body: SceneRequest) -> Response:
         """这个场景的音色补偿 EQ（单声道 float32 WAV 冲激响应），浏览器试听与导出用同一个。"""
-        fir = request.app.state.renderer.scene_eq(body.scene, ready_analysis(pid))
+        fir = request.app.state.renderer.scene_eq(body.scene, request.app.state.songs.analysis(pid))
         buf = io.BytesIO()
         sf.write(buf, fir.astype("float32"), SAMPLE_RATE, format="WAV", subtype="FLOAT")
         return Response(buf.getvalue(), media_type="audio/wav")
 
     @app.get("/api/projects/{pid}/scene")
-    def get_scene(pid: str) -> dict:
+    def get_scene(request: Request, pid: str) -> dict:
         """用户上次保存的场景；没保存过（或旧文件已不合法）时 404，前端改用自动编排。"""
-        ready_analysis(pid)
+        request.app.state.songs.ready(pid)
         text = store.load_scene(pid)
         if text is None:
             raise ApiError(404, "NO_SAVED_SCENE", "No scene has been saved for this song")
@@ -273,7 +213,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
     @app.put("/api/projects/{pid}/scene", status_code=204)
     async def put_scene(request: Request, pid: str) -> Response:
         """整份替换保存（幂等）；先按大小上限拒绝，再按场景白名单校验。"""
-        ready_analysis(pid)
+        request.app.state.songs.ready(pid)
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > MAX_SCENE_BYTES:
             raise ApiError(413, "TOO_LARGE", "The scene is too large")
@@ -293,12 +233,11 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         return Response(status_code=204)
 
     @app.get("/api/projects/{pid}/stems/{name}.flac")
-    def get_stem(pid: str, name: str) -> FileResponse:
-        rec = store.get_project(pid)
+    def get_stem(request: Request, pid: str, name: str) -> FileResponse:
+        store.get_project(pid)  # 先确认歌在（404），再看文件名（404），最后才看是否就绪（409）
         if name not in PREVIEW_NAMES:
             raise NotFound(name)
-        if rec.state is not ProjectState.READY:
-            raise ApiError(409, "PROJECT_NOT_READY", "Still processing")
+        request.app.state.songs.ready(pid)
         path = store.project_files(pid).preview(name)
         if not path.exists():
             raise NotFound(name)
@@ -318,33 +257,9 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
 
     @app.post("/api/projects/{pid}/exports")
     def create_export(request: Request, pid: str, body: ExportRequest) -> JSONResponse:
-        with store.lock:  # 与删歌互斥：确认歌还在、建导出记录、排任务一起做
-            return queue_export(request, pid, body)
-
-    def queue_export(request: Request, pid: str, body: ExportRequest) -> JSONResponse:
-        project = store.get_project(pid)
-        if project.state is not ProjectState.READY:
-            raise ApiError(409, "PROJECT_NOT_READY", "Still processing")
-        if body.format not in available_formats():
-            raise ApiError(422, "UNSUPPORTED_FORMAT", f"The local ffmpeg cannot encode {body.format}")
-        key = f"v{RENDER_VERSION}|{pid}|{canonical_json(body.scene)}|{body.format}|{body.loudness}"
-        eid = hashlib.sha256(key.encode()).hexdigest()[:ID_LEN]
-        rec, created = store.create_export_if_absent(
-            ExportRecord(
-                id=eid,
-                project_id=pid,
-                state=ExportState.QUEUED,
-                format=body.format,
-                scene=body.scene.model_dump(mode="json"),
-                loudness=body.loudness,
-            )
-        )
-        if not created and rec.state is ExportState.FAILED:
-            rec = store.transition_export(eid, ExportState.QUEUED)
-            created = True
-        if created:
-            request.app.state.runner.submit(JobKind.EXPORT, eid, pid)
-        return JSONResponse(rec.to_dict(), status_code=202 if created else 200)
+        songs: Songs = request.app.state.songs
+        rec, queued = songs.queue_export(pid, body.scene, body.format, body.loudness)
+        return JSONResponse(rec.to_dict(), status_code=202 if queued else 200)
 
     @app.get("/api/exports/{eid}")
     def get_export(eid: str) -> dict:

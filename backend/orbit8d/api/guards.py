@@ -6,12 +6,15 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from orbit8d.jobs.songs import Refused
 from orbit8d.jobs.store import NotFound
 from orbit8d.media.ffmpeg import MediaError
 
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 DEV_WEB_PORT = 5173
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+# 用例层拒绝请求时给的错误码 → HTTP 状态码
+REFUSAL_STATUS = {"PROJECT_BUSY": 409, "PROJECT_NOT_READY": 409, "TOO_LONG": 400, "UNSUPPORTED_FORMAT": 422}
 
 
 class ApiError(Exception):
@@ -40,6 +43,10 @@ async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
     return JSONResponse({"code": exc.code, "message": exc.message}, status_code=exc.status)
 
 
+async def _refused(_: Request, exc: Refused) -> JSONResponse:
+    return JSONResponse({"code": exc.code, "message": str(exc)}, status_code=REFUSAL_STATUS[exc.code])
+
+
 async def _media_error(_: Request, exc: MediaError) -> JSONResponse:
     return JSONResponse({"code": exc.code, "message": str(exc)}, status_code=400)
 
@@ -54,5 +61,6 @@ def install_guards(app: FastAPI, port: int) -> None:
     app.add_middleware(LocalOriginMiddleware, allowed_origins=origins)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)  # 最外层
     app.add_exception_handler(ApiError, _api_error)
+    app.add_exception_handler(Refused, _refused)
     app.add_exception_handler(MediaError, _media_error)
     app.add_exception_handler(NotFound, _not_found)

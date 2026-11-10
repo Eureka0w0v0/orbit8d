@@ -2,16 +2,18 @@
 （web/src/contract.test.ts）。后端改了这些常量就重新生成：uv run python -m tests.make_golden，
 并在提交说明里写明前端要跟着改什么。"""
 
+import ast
 from typing import get_args
 
 from fastapi.testclient import TestClient
 
 from orbit8d.api.app import PREVIEW_NAMES, ExportRequest, create_app
+from orbit8d.api.guards import REFUSAL_STATUS
 from orbit8d.config import load_settings
 from orbit8d.engine import choreo
 from orbit8d.engine.scene import MAX_BARS, TrackName
 from tests.conftest import FakeSeparator
-from tests.make_golden import CONTRACT_FILE, contract, contract_json
+from tests.make_golden import CONTRACT_FILE, PACKAGE_DIR, contract, contract_json
 
 BASE = "http://127.0.0.1:8765"
 
@@ -52,6 +54,17 @@ def test_backend_copies_agree_with_the_contract():
         "choreo 混响量": (list(choreo.WET_RANGE_DB), _bounds(c, "Section", "wet_db")),
     }
     assert {name: pair for name, pair in copies.items() if pair[0] != pair[1]} == {}
+
+
+def test_every_code_the_use_cases_refuse_with_has_an_http_status():
+    """jobs 层用 Refused(错误码, 说明) 拒绝请求，HTTP 状态码由入口层按错误码定（api/guards.py）。"""
+    refused = {
+        node.args[0].value
+        for path in sorted(PACKAGE_DIR.rglob("*.py"))
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "Refused"
+    }
+    assert refused == set(REFUSAL_STATUS)
 
 
 def test_preview_files_cover_each_source_channel_once():

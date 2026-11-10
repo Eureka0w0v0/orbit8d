@@ -251,6 +251,10 @@ class Store:
         for path in paths if paths is not None else list(self.settings.trash_dir.iterdir()):
             shutil.rmtree(path) if path.is_dir() else path.unlink()
 
+    def new_upload(self) -> Path:
+        """给一个正在收的上传准备的临时文件位置（没收完的，下次启动时由 clean_uploads 清掉）。"""
+        return self.settings.uploads_dir / f"{uuid.uuid4().hex}{UPLOAD_SUFFIX}"
+
     def clean_uploads(self) -> int:
         """启动时还没有上传在进行：上次没传完的临时文件都删掉。返回删了几个。"""
         leftovers = list(self.settings.uploads_dir.glob(f"*{UPLOAD_SUFFIX}"))

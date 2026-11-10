@@ -125,3 +125,15 @@ def test_modules_have_no_import_cycles():
 
     cycles = [cycle for module in graph if (cycle := visit(module, ()))]
     assert cycles == []
+
+
+def test_the_api_layer_never_takes_the_store_lock():
+    """“查状态 + 改记录 + 排任务”的互斥在 jobs/songs.py 里做（SPEC §6.1）；入口层自己不拿存储锁。"""
+    touching = [
+        str(path.relative_to(PACKAGE.parent))
+        for module, path in MODULES.items()
+        if unit_of(module) == "api"
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Attribute) and node.attr in ("lock", "_lock")
+    ]
+    assert touching == []

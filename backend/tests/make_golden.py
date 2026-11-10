@@ -72,7 +72,8 @@ PACKAGE_DIR = Path(__file__).resolve().parents[1] / "orbit8d"
 # 错误码还没有统一的登记处，散在各模块的字面量里，所以从源码收集。认得的写法（出现新写法要补进来）：
 # 字典 {"code": "X", ...}，以及下表这些调用的第 n 个位置参数（字面量，或模块级的字符串常量）
 CODE_ARGS = {
-    "ApiError": 1,  # ApiError(409, "PROJECT_BUSY", message)
+    "ApiError": 1,  # ApiError(413, "TOO_LARGE", message)
+    "Refused": 0,  # 用例层拒绝：Refused("PROJECT_BUSY", message)
     "MediaError": 0,  # MediaError("NO_AUDIO", message)
     "super().__init__": 0,  # CodedError 的子类：super().__init__("SEPARATION_FAILED", message)
     "fail": 1,  # 任务失败：fail(job.id, "INTERNAL", message)
