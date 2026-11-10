@@ -32,7 +32,7 @@ from orbit8d.engine.structure import SectionInfo
 from orbit8d.jobs.layout import ORIGINAL_PREVIEW
 from orbit8d.jobs.states import ExportState, ProjectState, is_terminal
 from orbit8d.jobs.store import UPLOAD_SUFFIX, ExportRecord, NotFound, ProjectRecord, Store
-from orbit8d.jobs.worker import JobRunner, Separator, safe_name, song_title
+from orbit8d.jobs.worker import JobKind, JobRunner, Separator, safe_name, song_title
 from orbit8d.media.ffmpeg import OUTPUT_FORMATS, MediaError, available_formats, probe
 
 log = logging.getLogger(__name__)
@@ -211,7 +211,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
         existing = store.find_project(pid)
         if existing:
             if existing.state is ProjectState.FAILED and not runner.busy(pid):
-                runner.submit("analysis", pid, pid)
+                runner.submit(JobKind.ANALYSIS, pid, pid)
             return existing, 200
         if info is None:  # 查的时候还在、加锁前被删了：按新歌再来一次
             raise ApiError(409, "PROJECT_BUSY", "The song was just deleted; import it again")
@@ -235,7 +235,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
                 },
             )
         )
-        runner.submit("analysis", pid, pid)
+        runner.submit(JobKind.ANALYSIS, pid, pid)
         return rec, 202
 
     @app.get("/api/projects")
@@ -384,7 +384,7 @@ def create_app(settings: Settings, separator: Separator) -> FastAPI:
             rec = store.transition_export(eid, ExportState.QUEUED)
             created = True
         if created:
-            request.app.state.runner.submit("export", eid, pid)
+            request.app.state.runner.submit(JobKind.EXPORT, eid, pid)
         return JSONResponse(rec.to_dict(), status_code=202 if created else 200)
 
     @app.get("/api/exports/{eid}")

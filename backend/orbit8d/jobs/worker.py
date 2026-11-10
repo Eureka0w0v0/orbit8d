@@ -9,6 +9,7 @@ import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
@@ -40,9 +41,16 @@ class Separator(Protocol):
     def separate(self, wav: Path, out_dir: Path, on_progress: Callable[[float], None]) -> None: ...
 
 
+class JobKind(StrEnum):
+    ANALYSIS = "analysis"  # 新导入的歌：解码 → 分轨 → 分析
+    REFRESH = "refresh"  # 分析算法升级后重新分析，沿用已有分轨
+    MIGRATE = "migrate"  # 旧版存储迁移
+    EXPORT = "export"
+
+
 @dataclass(frozen=True)
 class Job:
-    kind: str  # "analysis" | "refresh" | "migrate" | "export"
+    kind: JobKind
     id: str  # 项目或导出的 ID
     project_id: str  # 这个任务属于哪首歌（删歌前据此判断是否还有任务）
 
@@ -91,11 +99,12 @@ class JobRunner:
         self._stop.set()
         self._thread.join(timeout)
 
-    def submit(self, kind: str, job_id: str, project_id: str) -> None:
+    def submit(self, kind: JobKind, job_id: str, project_id: str) -> None:
+        job = Job(JobKind(kind), job_id, project_id)  # 不认识的任务种类在这里就报错，不留到工作线程里
         with self._cond:
             self._pending += 1
             self._by_project[project_id] = self._by_project.get(project_id, 0) + 1
-        self._queue.put(Job(kind, job_id, project_id))
+        self._queue.put(job)
 
     def busy(self, project_id: str) -> bool:
         """这首歌还有排队或正在跑的任务。"""
@@ -107,7 +116,7 @@ class JobRunner:
         stale = self._store.stale_projects(ANALYSIS_VERSION)
         for rec in stale:
             self._store.transition_project(rec.id, ProjectState.ANALYZING)
-            self.submit("refresh", rec.id, rec.id)
+            self.submit(JobKind.REFRESH, rec.id, rec.id)
             log.info(
                 "project queued for re-analysis", extra={"event": "project.refresh", "project_id": rec.id}
             )
@@ -121,7 +130,7 @@ class JobRunner:
             if rec.state is ProjectState.READY and needs_migration(self._store.project_files(rec.id))
         ]
         for rec in old:
-            self.submit("migrate", rec.id, rec.id)
+            self.submit(JobKind.MIGRATE, rec.id, rec.id)
             log.info(
                 "project queued for storage migration",
                 extra={"event": "project.migrate", "project_id": rec.id},
@@ -150,10 +159,10 @@ class JobRunner:
 
     def _run(self, job: Job) -> None:
         handler, fail = {
-            "analysis": (self._run_analysis, self._store.fail_project),
-            "refresh": (self._run_refresh, self._store.fail_project),
-            "migrate": (self._run_migrate, self._store.fail_project),
-            "export": (self._run_export, self._store.fail_export),
+            JobKind.ANALYSIS: (self._run_analysis, self._store.fail_project),
+            JobKind.REFRESH: (self._run_refresh, self._store.fail_project),
+            JobKind.MIGRATE: (self._run_migrate, self._store.fail_project),
+            JobKind.EXPORT: (self._run_export, self._store.fail_export),
         }[job.kind]
         with trace(job.id):
             log.info("job started", extra={"event": "job.start", "kind": job.kind})
