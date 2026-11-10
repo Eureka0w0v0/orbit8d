@@ -1,4 +1,4 @@
-"""分轨模型 htdemucs_ft 的本地文件（SPEC §4.2）：4 个子模型 + 组合配置，共约 336 MB。
+"""分轨模型 htdemucs_ft 的本地文件（SPEC §2、§12）：4 个子模型 + 组合配置，共约 336 MB。
 
 先找 HuggingFace 缓存（demucs 4.1 自己也下载到那里）；没有或校验不过，就从 HuggingFace 下载到
 data/assets/demucs/（只有第一次，带进度、逐个文件 sha256 校验）。加载只读本地文件，之后启动不再联网。

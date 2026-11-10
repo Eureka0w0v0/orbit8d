@@ -1,4 +1,4 @@
-// 3D 按需重画（SPEC §10.1）：画面没有任何变化时不重画，静止时不占 GPU；电平表与时间是 DOM，照常每帧更新。
+// 3D 按需重画（SPEC §10.2）：画面没有任何变化时不重画，静止时不占 GPU；电平表与时间是 DOM，照常每帧更新。
 
 export interface FrameState {
   dirty: boolean; // 场景、选中音轨、半球网格、窗口大小等变过（Stage.invalidate）

@@ -490,7 +490,7 @@ def test_startup_cleans_trash_uploads_and_stale_assets(data_dir):
     assert any(name.endswith(".sofa") for name in left)  # HRTF 原始数据不动
 
 
-# ---------- 分轨模型（SPEC §4.2） ----------
+# ---------- 分轨模型（SPEC §2、§12） ----------
 
 
 class DownloadingSeparator(FakeSeparator):
