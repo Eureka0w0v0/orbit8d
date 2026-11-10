@@ -1,0 +1,1707 @@
+{
+ "about": "Recorded by tests.browser_probe (see its docstring for what is compared)",
+ "steps": [
+  {
+   "step": "open the app",
+   "dom": {
+    "phase": "empty",
+    "listen": "",
+    "save": "",
+    "playing": false,
+    "title": "",
+    "duration": "0:00",
+    "undo": false,
+    "redo": false,
+    "overlay": "drop",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": -1,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "",
+    "shape": "",
+    "room": "",
+    "sections": 0,
+    "events": 0
+   },
+   "params": {
+    "compressor1.attack": [
+     "value = 0.001"
+    ],
+    "compressor1.knee": [
+     "value = 0"
+    ],
+    "compressor1.ratio": [
+     "value = 20"
+    ],
+    "compressor1.release": [
+     "value = 0.1"
+    ],
+    "compressor1.threshold": [
+     "value = -1"
+    ],
+    "gain2.gain": [
+     "value = 1"
+    ],
+    "gain3.gain": [
+     "value = 0"
+    ],
+    "gain6.gain": [
+     "value = 0"
+    ]
+   },
+   "messages": [
+    "init"
+   ],
+   "graph": [
+    "compressor1.connect(destination)",
+    "compressor1.connect(splitter1)",
+    "convolver1.connect(gain1)",
+    "convolver2.connect(gain2)",
+    "convolver3.connect(gain3)",
+    "createAnalyser -> analyser1",
+    "createAnalyser -> analyser2",
+    "createChannelSplitter -> splitter1",
+    "createConvolver -> convolver1",
+    "createConvolver -> convolver2",
+    "createConvolver -> convolver3",
+    "createDynamicsCompressor -> compressor1",
+    "createGain -> gain1",
+    "createGain -> gain2",
+    "createGain -> gain3",
+    "createGain -> gain4",
+    "createGain -> gain5",
+    "createGain -> gain6",
+    "gain1.connect(convolver2)",
+    "gain1.connect(convolver3)",
+    "gain2.connect(gain5)",
+    "gain3.connect(gain5)",
+    "gain4.connect(compressor1)",
+    "gain5.connect(gain4)",
+    "gain6.connect(compressor1)",
+    "new AudioContext(44100 Hz)",
+    "new AudioWorkletNode(orbit8d-binaural, 9 in, [2,1] out) -> worklet1",
+    "splitter1.connect(analyser1, 0)",
+    "splitter1.connect(analyser2, 1)",
+    "worklet1.connect(convolver1, 1)",
+    "worklet1.connect(gain1, 0)"
+   ]
+  },
+  {
+   "step": "import a song",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain4.gain": [
+     "setTargetAtTime(0.445, @now, 0.05)"
+    ],
+    "gain5.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0)",
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.04)"
+    ],
+    "gain6.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0)",
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.04)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": [
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData"
+   ]
+  },
+  {
+   "step": "play",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": true,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain7.gain": [
+     "setValueAtTime(0, @now+0.06)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ],
+    "gain8.gain": [
+     "setValueAtTime(0, @+0)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ]
+   },
+   "messages": [
+    "start"
+   ],
+   "graph": [
+    "createBufferSource -> source1",
+    "createBufferSource -> source2",
+    "createGain -> gain7",
+    "createGain -> gain8",
+    "gain7.connect(worklet1)",
+    "gain8.connect(gain6)",
+    "resume",
+    "source1.connect(gain7)",
+    "source1.start(@+0)",
+    "source2.connect(gain8)",
+    "source2.start(@+0)"
+   ]
+  },
+  {
+   "step": "pause",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain7.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ],
+    "gain8.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ]
+   },
+   "messages": [
+    "stop"
+   ],
+   "graph": [
+    "gain7.disconnect()",
+    "gain7.disconnect()",
+    "gain8.disconnect()",
+    "gain8.disconnect()",
+    "source1.disconnect()",
+    "source1.stop(@+0.015)",
+    "source2.disconnect()",
+    "source2.stop(@+0.015)"
+   ]
+  },
+  {
+   "step": "space plays",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": true,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain10.gain": [
+     "setValueAtTime(0, @+0)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ],
+    "gain9.gain": [
+     "setValueAtTime(0, @now+0.06)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ]
+   },
+   "messages": [
+    "start"
+   ],
+   "graph": [
+    "createBufferSource -> source3",
+    "createBufferSource -> source4",
+    "createGain -> gain10",
+    "createGain -> gain9",
+    "gain10.connect(gain6)",
+    "gain9.connect(worklet1)",
+    "resume",
+    "source3.connect(gain9)",
+    "source3.start(@+0)",
+    "source4.connect(gain10)",
+    "source4.start(@+0)"
+   ]
+  },
+  {
+   "step": "right arrow jumps ahead while playing",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": true,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain10.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ],
+    "gain11.gain": [
+     "setValueAtTime(0, @now+0.06)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ],
+    "gain12.gain": [
+     "setValueAtTime(0, @+0)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ],
+    "gain9.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ]
+   },
+   "messages": [
+    "stop",
+    "start"
+   ],
+   "graph": [
+    "createBufferSource -> source5",
+    "createBufferSource -> source6",
+    "createGain -> gain11",
+    "createGain -> gain12",
+    "gain10.disconnect()",
+    "gain10.disconnect()",
+    "gain11.connect(worklet1)",
+    "gain12.connect(gain6)",
+    "gain9.disconnect()",
+    "gain9.disconnect()",
+    "resume",
+    "source3.disconnect()",
+    "source3.stop(@+0.015)",
+    "source4.disconnect()",
+    "source4.stop(@+0.015)",
+    "source5.connect(gain11)",
+    "source5.start(@+0)",
+    "source6.connect(gain12)",
+    "source6.start(@+0)"
+   ]
+  },
+  {
+   "step": "B switches to the original",
+   "dom": {
+    "phase": "ready",
+    "listen": "original",
+    "save": "saved",
+    "playing": true,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain5.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.04)"
+    ],
+    "gain6.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0.554, @+0.04)"
+    ]
+   },
+   "messages": [],
+   "graph": []
+  },
+  {
+   "step": "B switches back to 8D",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": true,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain5.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.04)"
+    ],
+    "gain6.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.04)"
+    ]
+   },
+   "messages": [],
+   "graph": []
+  },
+  {
+   "step": "space pauses",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain11.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ],
+    "gain12.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ]
+   },
+   "messages": [
+    "stop"
+   ],
+   "graph": [
+    "gain11.disconnect()",
+    "gain11.disconnect()",
+    "gain12.disconnect()",
+    "gain12.disconnect()",
+    "source5.disconnect()",
+    "source5.stop(@+0.015)",
+    "source6.disconnect()",
+    "source6.stop(@+0.015)"
+   ]
+  },
+  {
+   "step": "left arrow jumps back while paused",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {},
+   "messages": [],
+   "graph": []
+  },
+  {
+   "step": "drag the playhead while paused",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {},
+   "messages": [],
+   "graph": []
+  },
+  {
+   "step": "play",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": true,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain13.gain": [
+     "setValueAtTime(0, @now+0.06)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ],
+    "gain14.gain": [
+     "setValueAtTime(0, @+0)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ]
+   },
+   "messages": [
+    "start"
+   ],
+   "graph": [
+    "createBufferSource -> source7",
+    "createBufferSource -> source8",
+    "createGain -> gain13",
+    "createGain -> gain14",
+    "gain13.connect(worklet1)",
+    "gain14.connect(gain6)",
+    "resume",
+    "source7.connect(gain13)",
+    "source7.start(@+0)",
+    "source8.connect(gain14)",
+    "source8.start(@+0)"
+   ]
+  },
+  {
+   "step": "drag the playhead while playing",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": true,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain13.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ],
+    "gain14.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ],
+    "gain15.gain": [
+     "setValueAtTime(0, @now+0.06)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ],
+    "gain16.gain": [
+     "setValueAtTime(0, @+0)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ]
+   },
+   "messages": [
+    "stop",
+    "start"
+   ],
+   "graph": [
+    "createBufferSource -> source10",
+    "createBufferSource -> source9",
+    "createGain -> gain15",
+    "createGain -> gain16",
+    "gain13.disconnect()",
+    "gain13.disconnect()",
+    "gain14.disconnect()",
+    "gain14.disconnect()",
+    "gain15.connect(worklet1)",
+    "gain16.connect(gain6)",
+    "resume",
+    "source10.connect(gain16)",
+    "source10.start(@+0)",
+    "source7.disconnect()",
+    "source7.stop(@+0.015)",
+    "source8.disconnect()",
+    "source8.stop(@+0.015)",
+    "source9.connect(gain15)",
+    "source9.start(@+0)"
+   ]
+  },
+  {
+   "step": "pause",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain15.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ],
+    "gain16.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ]
+   },
+   "messages": [
+    "stop"
+   ],
+   "graph": [
+    "gain15.disconnect()",
+    "gain15.disconnect()",
+    "gain16.disconnect()",
+    "gain16.disconnect()",
+    "source10.disconnect()",
+    "source10.stop(@+0.015)",
+    "source9.disconnect()",
+    "source9.stop(@+0.015)"
+   ]
+  },
+  {
+   "step": "mute the drums",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     true,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain2.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.08)"
+    ],
+    "gain3.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.08)"
+    ],
+    "gain4.gain": [
+     "setTargetAtTime(0.445, @now, 0.05)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": [
+    "decodeAudioData"
+   ]
+  },
+  {
+   "step": "apply a preset",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain2.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.08)"
+    ],
+    "gain3.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.08)"
+    ],
+    "gain4.gain": [
+     "setTargetAtTime(0.445, @now, 0.05)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": [
+    "decodeAudioData"
+   ]
+  },
+  {
+   "step": "auto choreography",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain2.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.08)"
+    ],
+    "gain3.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.08)"
+    ],
+    "gain4.gain": [
+     "setTargetAtTime(0.445, @now, 0.05)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": [
+    "decodeAudioData"
+   ]
+  },
+  {
+   "step": "change the vocals orbit to an ellipse",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "ellipse",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain2.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.08)"
+    ],
+    "gain3.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.08)"
+    ],
+    "gain4.gain": [
+     "setTargetAtTime(0.445, @now, 0.05)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": [
+    "decodeAudioData"
+   ]
+  },
+  {
+   "step": "undo with the keyboard",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": true,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain2.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.08)"
+    ],
+    "gain3.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.08)"
+    ],
+    "gain4.gain": [
+     "setTargetAtTime(0.445, @now, 0.05)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": [
+    "decodeAudioData"
+   ]
+  },
+  {
+   "step": "redo with the button",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "ellipse",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain2.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.08)"
+    ],
+    "gain3.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.08)"
+    ],
+    "gain4.gain": [
+     "setTargetAtTime(0.445, @now, 0.05)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": [
+    "decodeAudioData"
+   ]
+  },
+  {
+   "step": "open the space tab",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "space",
+    "shape": "",
+    "room": "hall",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {},
+   "messages": [],
+   "graph": []
+  },
+  {
+   "step": "change the room",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "space",
+    "shape": "",
+    "room": "room",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain2.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.08)"
+    ],
+    "gain3.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.08)"
+    ],
+    "gain4.gain": [
+     "setTargetAtTime(0.445, @now, 0.05)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": [
+    "decodeAudioData",
+    "decodeAudioData"
+   ]
+  },
+  {
+   "step": "change the room back",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "space",
+    "shape": "",
+    "room": "hall",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain2.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.08)"
+    ],
+    "gain3.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.08)"
+    ],
+    "gain4.gain": [
+     "setTargetAtTime(0.445, @now, 0.05)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": [
+    "decodeAudioData",
+    "decodeAudioData"
+   ]
+  },
+  {
+   "step": "back to the orbit tab",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "ellipse",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {},
+   "messages": [],
+   "graph": []
+  },
+  {
+   "step": "the backend stops: saving fails",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "failed",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     true,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "ellipse",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain4.gain": [
+     "setTargetAtTime(0.445, @now, 0.05)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": []
+  },
+  {
+   "step": "the backend is back: the scene is saved",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": true,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     true,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "ellipse",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {},
+   "messages": [],
+   "graph": []
+  },
+  {
+   "step": "import a second song",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-b.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain2.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.08)"
+    ],
+    "gain3.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.08)"
+    ],
+    "gain4.gain": [
+     "setTargetAtTime(0.458, @now, 0.05)"
+    ],
+    "gain5.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0)",
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.04)"
+    ],
+    "gain6.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0)",
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.04)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": [
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData"
+   ]
+  },
+  {
+   "step": "play the second song",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": true,
+    "title": "probe-song-b.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain17.gain": [
+     "setValueAtTime(0, @now+0.06)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ],
+    "gain18.gain": [
+     "setValueAtTime(0, @+0)",
+     "linearRampToValueAtTime(1, @+0.01)"
+    ]
+   },
+   "messages": [
+    "start"
+   ],
+   "graph": [
+    "createBufferSource -> source11",
+    "createBufferSource -> source12",
+    "createGain -> gain17",
+    "createGain -> gain18",
+    "gain17.connect(worklet1)",
+    "gain18.connect(gain6)",
+    "resume",
+    "source11.connect(gain17)",
+    "source11.start(@+0)",
+    "source12.connect(gain18)",
+    "source12.start(@+0)"
+   ]
+  },
+  {
+   "step": "pause",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-b.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 0,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain17.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ],
+    "gain18.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.015)"
+    ]
+   },
+   "messages": [
+    "stop"
+   ],
+   "graph": [
+    "gain17.disconnect()",
+    "gain17.disconnect()",
+    "gain18.disconnect()",
+    "gain18.disconnect()",
+    "source11.disconnect()",
+    "source11.stop(@+0.015)",
+    "source12.disconnect()",
+    "source12.stop(@+0.015)"
+   ]
+  },
+  {
+   "step": "open the song menu",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-b.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": true,
+    "songs": 2,
+    "selected": 0,
+    "muted": [
+     false,
+     false,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "circle",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {},
+   "messages": [],
+   "graph": []
+  },
+  {
+   "step": "switch to the first song from the menu",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 2,
+    "selected": 0,
+    "muted": [
+     false,
+     true,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "ellipse",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {
+    "gain2.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.08)"
+    ],
+    "gain3.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.08)"
+    ],
+    "gain4.gain": [
+     "setTargetAtTime(0.445, @now, 0.05)"
+    ],
+    "gain5.gain": [
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0)",
+     "cancelScheduledValues(@now)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(1, @+0.04)"
+    ],
+    "gain6.gain": [
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0)",
+     "cancelScheduledValues(@+0)",
+     "setValueAtTime(<current>, @+0)",
+     "linearRampToValueAtTime(0, @+0.04)"
+    ]
+   },
+   "messages": [
+    "params"
+   ],
+   "graph": [
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData",
+    "decodeAudioData"
+   ]
+  },
+  {
+   "step": "export and download",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 2,
+    "selected": 0,
+    "muted": [
+     false,
+     true,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "ellipse",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {},
+   "messages": [],
+   "graph": []
+  },
+  {
+   "step": "delete the song that is not open",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": true,
+    "songs": 1,
+    "selected": 0,
+    "muted": [
+     false,
+     true,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "ellipse",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {},
+   "messages": [],
+   "graph": []
+  },
+  {
+   "step": "delete the open song",
+   "dom": {
+    "phase": "empty",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "drop",
+    "dialog": false,
+    "menu": false,
+    "songs": 1,
+    "selected": 0,
+    "muted": [
+     false,
+     true,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "ellipse",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {},
+   "messages": [],
+   "graph": []
+  }
+ ]
+}

@@ -1,4 +1,4 @@
-.PHONY: setup assets dev backend web test test-py test-web lint build run
+.PHONY: setup assets dev backend web test test-py test-web lint build run probe
 
 BACKEND := backend
 WEB := web
@@ -36,3 +36,6 @@ build:            ## 构建前端，产物由后台托管
 
 run: build        ## 正式使用：构建前端后启动，自动打开浏览器
 	cd $(BACKEND) && uv run python -m orbit8d
+
+probe: build      ## 浏览器探针：无头 Chrome 把界面走一遍，与基线比对（要装 Chrome；用临时数据目录，不进 make test）
+	cd $(BACKEND) && uv run python -m tests.browser_probe
