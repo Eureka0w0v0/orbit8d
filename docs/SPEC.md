@@ -28,19 +28,30 @@
 
 ```
 web/（Vite + TypeScript + Three.js，无 UI 框架）
-  src/orbit/   轨道公式与时间轴（与 Python 逐点一致，共享黄金向量）
-  src/audio/   AudioWorklet 双耳渲染核心 + 播放控制 + 混响/EQ 卷积
-  src/scene/   白模人头、轨道环、把手、声源色点、拖拽交互、场景编辑纯函数（edit.ts）
-  src/ui/      音轨面板、参数面板、播放条里的时间轴、导入与导出
-  src/i18n/    界面三语词典（中文 / 日本語 / English）与语言检测
+  src/app.ts     总控：界面阶段、场景修改的唯一入口（applyScene）、帧循环、导入导出流程，把下面各层串起来
+  src/session/   打开一首歌之后才有的过程状态：歌的上下文（song）、自动保存（autosave）、EQ 与房间混响跟上场景（eq-sync）、一次导出的等待（export-run）
+  src/ui/        音轨面板、参数面板、播放条与时间轴、最近的歌、导入弹层、导出对话框；界面阶段表、快捷键映射、导入进度（纯函数）
+  src/scene/     Three.js：白模人头、轨道环、把手、声源色点、拖拽交互、三层半球
+  src/audio/     AudioWorklet 双耳渲染核心 + 播放控制 + 混响/EQ 卷积；9 声道布局与处理器名只写在 params.ts 一处
+  src/model/     不依赖浏览器的场景规则（纯函数）：编辑（edit）、撤销 / 重做（history）、三层的划分（layers）、混音规则（mix）、音轨的固定属性（tracks）
+  src/orbit/     轨道公式与时间轴（与 Python 逐点一致，共享黄金向量）
+  src/i18n/      界面三语词典（中文 / 日本語 / English）与语言检测
+  src/api.ts、src/types.ts   后端接口；与后端模型一一对应的类型
 backend/orbit8d/（Python 3.12 + FastAPI）
-  engine/      hrtf / orbit / timeline / render / reverb / master / tone / tempo / structure / choreo / scene / sources（9 路声源）/ mixdown（按场景渲染到母带）/ analysis（分析）/ chunks（分段处理）
-  media/       ffmpeg 探测、解码、编码（参数列表调用，不经 shell）；音频文件的分段读写（audiofile）
+  api/         HTTP 接口：app（组装、启动流程、托管前端构建产物）、guards（Host / 跨站防护、统一的错误应答）、routes_*（按领域分的路由）、state（启动后才建好的对象）
+  jobs/        songs（收歌、排导出、删歌：查状态 + 改记录 + 排任务，在存储锁里一起做）、worker（单工位任务队列）、store（记录的文件存储，原子写）、states（显式状态机）、layout（磁盘布局，只算路径）、stems（分轨与试听文件的读写、WAV → FLAC 迁移）
+  assets.py    外部数据的下载与校验入口（HRTF 数据集；分轨模型经 separate/model；`make assets`）；混响冲激响应缓存文件的命名、旧缓存清理
   separate/    Demucs 分轨；分轨模型文件（model：先找 HuggingFace 缓存，缺了才下载并校验 sha256）
-  jobs/        显式状态机、文件存储（原子写）、单工位任务队列
-  api/         HTTP 接口 + 托管前端构建产物
-shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
+  media/       ffmpeg 探测、解码、编码（参数列表调用，不经 shell）；音频文件的分段读写（audiofile）
+  engine/      hrtf / orbit / timeline / render / reverb / master / tone / tempo / structure / choreo / scene / sources（9 路声源）/ mixdown（按场景渲染到母带）/ analysis（分析）/ chunks（分段处理）
+  download.py  下载到 .part → 校验 sha256 → 原子改名（assets 与 separate/model 共用）
+  config.py、errors.py、logging_setup.py   运行配置、带错误码的异常、结构化日志
+shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）；contract.json 是前后端共享的枚举、声道布局、记录字段与错误码的快照
 ```
+
+依赖方向：上层只能依赖下层，模块之间没有环，也不许用函数内 import 把环藏起来。“谁可以依赖谁”的两张表写在测试里（`backend/tests/test_architecture.py`、`web/src/architecture.test.ts`：只读源码里的 import，不执行模块），具体到每个单元以表为准；新增单元或新增方向要先改表。
+- 后端自上而下：`__main__`（启动）→ `api` → `assets`、`jobs` → `separate`、`media` → `engine`；`download`、`config`、`errors`、`logging_setup` 是最底下的小模块。`engine` 不依赖项目里的任何其他包；`jobs` 不依赖 `api`、`assets`、`separate`（分轨器由启动处传进来）；入口层 `api` 不拿存储锁。
+- 前端自上而下：`app` → `session`、`ui`、`scene`、`audio` → `model`、`orbit` → `types`；`i18n`、`api.ts` 与 `types.ts` 同在底层。`ui`、`scene`、`audio` 互不依赖；`session` 只用 `audio`、`model`、`types`（定时器、取数、保存这些副作用由 `app.ts` 传进去，所以不用浏览器环境就能测）；正式代码不依赖测试代码。
 
 单一真理源：HRTF 表、混响冲激响应（BRIR）、按场景的补偿 EQ、每轨校准增益、试听总增益、自动编排全部由后台生成，前端下载同一份使用。
 
@@ -185,16 +196,19 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 
 非法跳转抛 `IllegalTransition`，状态不变。每次跳转写结构化日志（trace_id = 项目 / 导出 ID）。服务重启时把未完成的记录标为 FAILED：项目错误码 `INTERRUPTED`（重新导入即可）、导出错误码 `EXPORT_INTERRUPTED`（重新导出即可）。
 项目记录另有 `step`：状态里的子步骤，目前只有分轨前第一次下载模型时为 `model_download`（`progress` 此时是下载进度），每次状态跳转清空。
+两张表与 `check_transition` 在 `jobs/states.py`。接口当场做的跳转只有两个重试（FAILED → UPLOADED、FAILED → QUEUED），在 `jobs/songs.py` 里和“排任务”一起做；其余跳转由任务队列（`jobs/worker.py`）做：执行任务时逐步推进，服务启动时把要重新分析的歌转到 ANALYZING；上次没做完的记录由 `Store.recover_interrupted` 在启动时标为 FAILED。
 
-### 6.1 存储、迁移与删除（`jobs/worker.py`、`jobs/store.py`）
+### 6.1 存储、迁移与删除（`jobs/layout.py`、`jobs/stems.py`、`jobs/store.py`、`jobs/songs.py`）
+- 分工：`layout` 只管每个文件叫什么、放在哪（`ProjectFiles`、`ExportFiles`，不读不写）；`stems` 管分轨与试听文件的读写和 WAV → FLAC 迁移；`store` 管记录（`ProjectRecord`、`ExportRecord`、上传文件的元数据 `SourceInfo`，每条一个 JSON、原子写）和存储锁；`songs` 是收歌、排导出、删歌这三个要在锁里一起做的用例。记录的字段清单记在 `shared/golden/contract.json`，前端的类型与它比对。
 - 项目目录：`source`（上传的原文件）、`stems/*.flac`（4 条分轨，24 位 FLAC，每轨缩放到 ±1 以内，缩放系数记在记录的 `stem_scales`）、`preview/*.flac`、`scene.json`、`record.json`。解码出的 `orig.wav` 只在分析期间存在，用完即删；重新分析时从 `source` 再解码。分析结果只存在 `record.json` 里：旧版另写的那份 `analysis.json` 从来没人读，现在不再写（已有的不动，随项目一起删）。
 - 读记录时忽略这个版本不认识的键（旧版留下的，如导出记录里从没用过的 `progress`；或以后的版本加的），缺的键用默认值，所以新旧版本写的记录都读得出来。
 - 分轨 WAV → FLAC：写 FLAC → 读回逐段比对（误差 ≤ 4 个最低位）→ 记录写缩放系数 → 删 WAV。同一轨有 WAV 就用 WAV（缩放 1），所以中途崩溃不会出现缩放系数对不上的 FLAC；重复执行无副作用。
 - 启动时：清空回收目录 `data/trash/`、删掉上次没传完的上传、删掉不再使用的旧缓存（全局 EQ `eq_*.wav`、旧版本 BRIR、临时文件）；已就绪且还有 WAV 分轨或 `orig.wav` 的旧项目排队迁移（在重新分析之前）。
-- 删除：有排队或正在跑的任务（任务队列按歌计数）或状态不是 READY / FAILED 时拒绝（409 `PROJECT_BUSY`）；否则先把它的导出目录、再把项目目录改名挪进回收目录（原子），再删。“查状态 + 改记录 + 排任务”与删除都在存储锁里做（上传、导出、保存场景同样），不会删到一半又有新任务。
+- 删除：有排队或正在跑的任务（任务队列按歌计数）或状态不是 READY / FAILED 时拒绝（409 `PROJECT_BUSY`）；否则先把它的导出目录、再把项目目录改名挪进回收目录（原子），再删。“查状态 + 改记录 + 排任务”与删除都在存储锁里做（上传、导出、保存场景同样），不会删到一半又有新任务。拿锁的只有 `jobs/`（三个用例在 `jobs/songs.py`），入口层不碰锁。
 
 ## 7. API（仅 127.0.0.1，Host 头白名单防 DNS 重绑定，跨站写请求 403）
 
+- 代码：`api/app.py` 只做组装（启动流程、防护、挂路由、托管前端）；Host / 跨站防护与错误应答在 `api/guards.py`；接口按领域分在 `api/routes_projects.py`、`routes_scene.py`、`routes_exports.py`、`routes_assets.py`，路由里不写业务规则（收歌、排导出、删歌调 `jobs/songs.py`）。
 - Host 头只接受 `127.0.0.1` / `localhost`。
 - 非 GET/HEAD/OPTIONS 请求若带 Origin，必须是本服务或 Vite 开发服务器（5173）的源，否则 403（防 CSRF）。
 - 错误响应统一为 `{code, message}`（请求体或查询参数没通过校验时也是：422 `INVALID_REQUEST`，message 里写明哪个字段、为什么）：message 是英文技术说明，界面按 code 显示当前语言的提示（`web/src/i18n` 的 error 表，不认识的 code 才显示 message）；路径里的 ID 必须是 16 位小写十六进制，否则 404。
@@ -241,8 +255,8 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | web timeline | `shared/golden/timeline_vectors.json`（11 个随机多段 + 事件场景） | 方向单位向量、距离、混响量误差 < 1e-9 |
 | engine.structure | 合成一首已知结构的歌（前奏 / 主歌 / 副歌 / 主歌 / 副歌 / 桥段 / 副歌 / 尾声） | 分界落在真实小节线上、标签全对 |
 | engine.tone | 已知倾斜的匹配；参考场景 = 锚点；模型预测的染色 vs 真实渲染；静音 / 调音量不被拉回 | 1e-9；逐位相等；中高频 ±1.5 dB；±0.75 dB |
-| web scene/edit | 切分 / 删除 / 拖分界吸附小节线；事件重叠；预设只改当前段；拖事件吸附到拍、碰到同类事件停住、改长短 0.5–30 秒 | 纯函数、不改入参、位置没变返回原对象 |
-| web scene/history | 撤销 / 重做、连续修改合并、新修改清空重做、上限 100 步 | 逐步断言 |
+| web model/edit | 切分 / 删除 / 拖分界吸附小节线；事件重叠；预设只改当前段；拖事件吸附到拍、碰到同类事件停住、改长短 0.5–30 秒 | 纯函数、不改入参、位置没变返回原对象 |
+| web model/history | 撤销 / 重做、连续修改合并、新修改清空重做、上限 100 步 | 逐步断言 |
 | web i18n | 中日英三份词典条目完全一致、无空串、英文全部译过；语言检测优先级；段落名 / 预设名 / 错误码的显示 | 逐项断言 |
 | engine.analysis | 原曲 × original_gain 与经典场景 8D 试听（× preview_gain）的响度 | 相差 < 0.1 LU |
 | engine.structure | 音量起伏：相对最响处、静音压到 −60、不满一格也算一格 | 逐点断言 |
@@ -264,6 +278,14 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 | engine.choreo | 重复段落轮换且确定；重编保留分界、段名、混音、房间；自定义段名按主歌；最响副歌按原曲音量起伏 | 逐项断言 |
 | web audio core | 改音量 20 ms 逐块过渡；静音后尾巴放完严格为 0；取消静音 = 从干净状态渲染 | 相邻块电平比 > 0.85；== 0；逐样本相等 |
 | web audio transport / ui phase / scene redraw | 播放、停止按帧号生效（跳转先停后起）；界面阶段新跳转；按需重画判定 | 逐项断言 |
+| 契约（`tests/test_contract.py`、`web/src/contract.test.ts`） | `shared/golden/contract.json` 由后端常量生成：音轨、形状、房间、小节选项、导出格式、响度、两个状态枚举、子步骤、9 声道顺序与试听文件 → 声道表、采样率、停顿的减速时长、三层的一键高度、各参数上限、记录字段、全部错误码、场景参数表。后端断言重新生成的结果与已提交文件一致；前端断言 TS 常量、类型的字段清单、`STEM_LAYOUT`、i18n 的错误码表与它一致 | 逐项相等（有意改契约时重新生成并在提交里写明） |
+| 依赖方向（`tests/test_architecture.py`、`web/src/architecture.test.ts`） | 读每个源文件的 import：各单元只依赖表里允许的单元、没有循环依赖；后端另查没有函数内的项目内 import、`api` 不拿存储锁；前端另查正式代码不依赖测试代码 | 违规清单为空（§3） |
+| jobs.store | 歌名与导出文件名的来历、文件名清理；旧版写的项目记录读得出来且原样写回；导出记录里从没用过的 `progress` 读的时候丢掉；缺的键用默认值、不认识的键忽略 | 逐项断言 |
+| api | 工位正忙时重新导入一首失败过的歌；请求校验失败的应答 | 返回的记录已是 UPLOADED、旧错误已清；422 且响应体是 `{code: INVALID_REQUEST, message}` |
+| web session | 自动保存（防抖、只存最后一次、失败重试、重试期间又改、过期的应答不算、换歌前 flush、删歌没删成时改动还在）；EQ 跟随场景（250 ms 防抖、只用最后一次结果、房间缓存、失败保留旧 EQ）；导出的等待（轮询、幂等命中、失败、取消后不再更新界面也不下载）；歌的上下文与歌名 | 假定时器 + 假接口，逐步断言 |
+| web ui/shortcuts、ui/progress | 按键 + 当时的情形 → 动作（修饰键、焦点在控件或输入框时让路）；各阶段在总进度条上的区间、模型下载子步骤、错误提示 | 逐项断言 |
+| 试听引擎探针 A（`web/src/audio/probe.test.ts`，进 `make test`） | 假的 Web Audio 记录引擎在固定操作序列下的全部音频图操作：建了哪些节点、connect / disconnect、每个 AudioParam 的每次调度（方法、数值、相对时间）、声源 start / stop、发给 Worklet 的消息；Worklet 用真实渲染核心跑，记录各段是否出声。操作包括载入、播放、暂停、跳转、拖播放头、原曲与 8D 切换、换房间、EQ 更新、播放中改场景 | 与 `probe.golden.json` 逐项相同（快照由重构前的代码生成；有意改试听行为时才用 `ORBIT8D_UPDATE_PROBE=1` 重新生成） |
+| 浏览器探针 B（`make probe`，`backend/tests/browser_probe/`，不进 `make test`） | 无头 Chrome 打开构建好的前端，后台是真实的 `create_app` + 假分轨器 + 合成的歌 + 临时数据目录：导入并打开、播放 / 暂停、空格、B、方向键、拖播放头、改参数看到“已保存”、撤销 / 重做、停掉后台看到“保存失败”再恢复、导入第二首、换歌、导出并下载、导出中途关对话框、删歌，共 35 步 | 每步的界面状态正确；没有未捕获的异常、未处理的 Promise 拒绝、console.error、意料之外的失败请求；真实 AudioContext 上各 AudioParam 的调度序列、Worklet 消息类型序列、音频图操作与 `baseline.json` 一致（时间归一化、不比的量见该目录的 `__init__.py`） |
 
 ## 10. 界面（web/）
 
@@ -292,7 +314,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 - 视觉层级：选中音轨的轨道粗而亮，其余细而淡（不透明度 0.16），未选中的色点更小更淡；不画头部到色点的连线。
 - 按需重画（`src/scene/redraw.ts`）：逐帧回调照常跑（色点位置、电平表、时间），但只有画面真的变了才调用 WebGL 渲染——播放中、拖播放头、播放位置跳了、视角在动（`OrbitControls.update()` 返回 true，含阻尼惯性）、场景 / 选中音轨 / 网格开关 / 窗口大小变了（`Stage.invalidate()`）。静止时不占 GPU。
 
-- 三层半球网格（参考杜比全景声示意图，`src/scene/layers.ts`、`dome.ts`）：环绕层 [−15°, 15°]（蓝）、高度层 (15°, 60°]（橙）、顶层 (60°, 90°]（红）；只画 −15° / 0° / 15° / 60° 四条分界线、极淡色带（1.5%）和三个层名，选中音轨所在层提亮（5%）；按选中音轨的可视半径缩放，使其轨道贴在球面上；可在“空间”页关闭（记在 localStorage）。
+- 三层半球网格（参考杜比全景声示意图，`src/model/layers.ts`、`src/scene/dome.ts`）：环绕层 [−15°, 15°]（蓝）、高度层 (15°, 60°]（橙）、顶层 (60°, 90°]（红）；只画 −15° / 0° / 15° / 60° 四条分界线、极淡色带（1.5%）和三个层名，选中音轨所在层提亮（5%）；按选中音轨的可视半径缩放，使其轨道贴在球面上；可在“空间”页关闭（记在 localStorage）。
 - “所在层”按钮：一键把选中音轨的高度设为该层中心（0° / 35° / 75°），高亮随高度变化同步，不重建面板。
 
 ### 10.3 面板与朝向
@@ -301,18 +323,18 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 - 右栏头部：音轨名 + 当前段名（彩色标签）。分【轨道】【混音】【段落】【空间】四页：轨道页 = 形状 → 朝向快捷键（水平 / 竖·左右 / 竖·前后 / 斜↗ / 斜↖）→ 倾斜盘 + 所在层 → 距离 → 形状专属参数 → 速度与转动方向 → “精细调节”（起点、高度、三个倾斜角）；混音页 = 音量、声像宽度、混响送出（全曲）；段落页 = 起止与小节数、段落名、这一段的混响量、在此切分 / 删除本段、这一段的事件（可删）、在播放头处给当前音轨加停顿 / 飞过头顶；空间页 = 房间、背后压暗、网格开关、重置视角。
 - 播放条里的时间轴（`src/ui/timeline.ts`）代替进度条：段落色块（前奏 / 尾声 蓝紫、主歌 青、副歌 粉、桥段 金）、上方事件条（停顿 黄、飞过头顶 粉）、白色播放头。点一下跳到那里；在色块上按住左右拖是“拖播放头”：拖动中播放头、时间、3D 轨道与面板都跟着预览位置走，松手才真正跳过去（播放中会先暂停、松手后从新位置接着播；拖动被系统打断时跳到最后的位置）；拖段落之间的竖线调整分界（吸附小节线，两边至少各留 1 小节）。段落色块上叠一层淡淡的原曲音量起伏（每 0.25 秒一点，−40 dB 以下贴底）。
 - 事件条（高 9 像素，最少 10 像素宽）：条的起点 = 停顿“完全停住”的时刻 / 飞过头顶的开始，长度 = duration_s。拖动改位置、拖右端（最多 6 像素、不超过条宽 1/3）改长短，都吸附到拍（1/4 小节），按住 ⌥ 自由拖；只在自己的空档里移动，碰到同一音轨的同类事件就停住；数组顺序不变（拖动中下标稳定）。点一下选中（白框），Delete / Backspace 删除，Esc 取消选中。
-- 撤销 / 重做（`src/scene/history.ts`）：顶栏 ↩ ↪ 与 ⌘Z / ⇧⌘Z（Ctrl+Y）；最多 100 步，间隔不到 0.5 秒的连续修改算一步；换歌清空。所有场景修改都经过 `App.applyScene` 这一个入口记录。
-- 自动保存：改完 0.8 秒没再改就 PUT 整个场景（只存最后一次），顶栏显示“已保存 / 保存中… / 保存失败，稍后重试”（失败 5 秒后重试）；换歌前、关页面（pagehide，keepalive）时把没存的发出去。
-- 导出对话框：选格式与响度 → 显示阶段（排队 / 渲染 / 编码）→ 完成后自动开始下载。界面每 0.7 秒问一次进度，同一时间只等一个导出：关掉对话框（或又开始一次导出）就不再等之前那次，不会过一会儿突然冒出下载、也不会两次导出抢同一个对话框；后台照常把它做完，同样的参数再导出一次直接拿到结果（幂等）。
-- 键盘：空格播放 / 暂停，← / → 跳 5 秒，B 切换 8D / 原曲，⌘Z / ⇧⌘Z 撤销 / 重做，Delete 删除选中的事件。
-- 编辑规则（`src/scene/edit.ts`，纯函数）：切分在最近的小节线上、新段复制原段；删第 k 段时间并给前一段（删第一段并给后一段）；事件默认停顿 1 小节、飞过头顶 2 小节，同一音轨同类事件不能重叠（停顿含前后各 0.5 秒）；最多 16 段、64 个事件。
+- 撤销 / 重做（`src/model/history.ts`）：顶栏 ↩ ↪ 与 ⌘Z / ⇧⌘Z（Ctrl+Y）；最多 100 步，间隔不到 0.5 秒的连续修改算一步；换歌清空。所有场景修改都经过 `App.applyScene` 这一个入口记录。
+- 自动保存（`src/session/autosave.ts`，状态表 已保存 / 保存中 / 保存失败）：改完 0.8 秒没再改就 PUT 整个场景（只存最后一次），顶栏显示“已保存 / 保存中… / 保存失败，稍后重试”（失败 5 秒后重试）；换歌前、关页面（pagehide，keepalive）时把没存的发出去。
+- 导出对话框（`src/ui/export-dialog.ts`；等待过程在 `src/session/export-run.ts`）：选格式与响度 → 显示阶段（排队 / 渲染 / 编码）→ 完成后自动开始下载。界面每 0.7 秒问一次进度，同一时间只等一个导出：关掉对话框（或又开始一次导出）就不再等之前那次，不会过一会儿突然冒出下载、也不会两次导出抢同一个对话框；后台照常把它做完，同样的参数再导出一次直接拿到结果（幂等）。
+- 键盘（`src/ui/shortcuts.ts`：按键 → 动作名的纯映射）：空格播放 / 暂停，← / → 跳 5 秒，B 切换 8D / 原曲，⌘Z / ⇧⌘Z 撤销 / 重做，Delete 删除选中的事件。
+- 编辑规则（`src/model/edit.ts`，纯函数）：切分在最近的小节线上、新段复制原段；删第 k 段时间并给前一段（删第一段并给后一段）；事件默认停顿 1 小节、飞过头顶 2 小节，同一音轨同类事件不能重叠（停顿含前后各 0.5 秒）；最多 16 段、64 个事件。
 - 倾斜盘（`src/ui/tiltpad.ts`、`src/orbit/orientation.ts`）：俯视人头，白点方向 = 轨道最高点朝向 az，离圆心距离 = 翘起角 tilt（边缘 90°）；写回时统一为 pitch = tilt、roll = 0、yaw = az（可表示任意平面朝向）；读取时由轨道平面法线反算。注意：pitch 90° = 左耳→头顶→右耳的竖环，roll 90° = 正前→头顶→脑后的竖环。
 
 ### 10.4 试听引擎
 9 声道缓冲（vocals_hi, bass_hi, drums_hi L/R, other_hi L/R, bass_sub, drums_sub, other_sub）→ AudioWorklet（输出 0 = 双耳干声，输出 1 = 已逐块乘分段混响量的混响送出）→ BRIR 卷积 → 补偿 EQ 卷积 → 试听总增益 → DynamicsCompressor 兜底 → 输出；并联两路 AnalyserNode 驱动左右电平表。ConvolverNode 一律 `normalize = false`。
 不爆音：每次播放给 8D 输入与原曲各建一个淡入淡出 GainNode，播放 10 ms 淡入、暂停 / 跳转 15 ms 淡出后再停；Worklet 的开始 / 停止按帧号生效（`src/audio/transport.ts`：停止在 stopFrame 之后的第一个量子生效，淡出期间照常渲染；新一次播放在 startFrame 所在的量子才清空状态，跳转时旧的淡出先结束）。渲染核心里各声源的增益、混响送出、超低频增益改参数时 20 ms 内逐块线性过渡（第一次设参数与跳转后直接到位，所以黄金用例不受影响）；声源静音后把卷积尾巴放完 4 块就清空状态，取消静音时从干净状态开始。
 原曲 A/B：原曲缓冲与 9 声道缓冲同一时刻、同一位置开始播放（采样级同步），走另一路直接进兜底限幅；两路各有一个 GainNode，切换时 40 ms 交叉淡化。原曲那一路的增益 = original_gain × preview_scale（与 8D 试听一样响）。听原曲时 3D 画面变灰变暗，并显示“正在听原曲”。
-场景变化后 250 ms 没再变，就 `POST /eq` 取新 EQ，装进闲置的第二个 EQ 卷积器，80 ms 交叉淡化切过去（只用最后一次请求的结果，切换排队不打断淡化）。时间轴编译成纯数据（TypedArray）随参数一起 postMessage 给 Worklet。
+场景变化后 250 ms 没再变（`src/session/eq-sync.ts`），就 `POST /eq` 取新 EQ，装进闲置的第二个 EQ 卷积器，80 ms 交叉淡化切过去（只用最后一次请求的结果，切换排队不打断淡化）。时间轴编译成纯数据（TypedArray）随参数一起 postMessage 给 Worklet。
 
 ### 10.5 界面语言（`src/i18n/`）
 - 三份词典 zh / ja / en，结构以 `zh.ts` 的 `Messages` 类型为准，另外两份少一个词编译不过；测试再逐项比对条目、查空串。
@@ -385,6 +407,8 @@ v3（原曲 A/B 与时间轴）再加：`original_gain`（原曲试听的线性�
 - 限幅更保守：只允许 1% 的 30 ms 片段被压超过 1 dB（v1 是 2% / 2 dB），代价是整体小约 1 dB。
 
 ### 13.8 评测（`bench_eval.py` 同一套指标；两首歌：Faded、Die For You；参考 = 抖音 8D 视频）
+注：评测脚本 `bench_eval.py` 没有提交进仓库；下表是当时用它量出的结果，不随代码自动更新。
+
 | 指标 | v1.2 经典 | v2 经典 | v2 自动编排 | 原曲 | 抖音参考 |
 |---|---|---|---|---|---|
 | 音色偏差 RMS | 1.4 / 1.2 dB | 0.2 / 0.2 dB | 0.5 / 0.5 dB | — | — |

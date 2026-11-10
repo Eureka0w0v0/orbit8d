@@ -225,7 +225,7 @@ Click **Export** and choose a format and a loudness:
 
 **Loudness.** *Loud* (the default) is exactly what you hear in the preview, mastered to about −9 LUFS when the song allows it. *Standard* masters to −14 LUFS, the level most streaming services use — quieter and easier on long listening sessions. Both keep every peak below −1 dBTP, and very dynamic songs may come out a little quieter than the target to avoid squashing them.
 
-The export is rendered at full quality on your computer (about 10 seconds for a 4-minute song after it starts), then downloaded as `Artist - Title (8D).<ext>`. The title (with " (8D)"), artist and album are copied from the original. The finished file is also kept in `data/exports/`, and exporting the same scene in the same format again is instant.
+The export is rendered at full quality on your computer (about 10 seconds for a 4-minute song after it starts), then downloaded as `Artist - Title (8D).<ext>`. The title (with " (8D)"), artist and album are copied from the original. The finished file is also kept in `data/exports/`, and exporting the same scene in the same format again is instant. If you close the dialog while it is still working, nothing is downloaded; the export finishes in the background, so exporting the same scene again gives you the file at once.
 
 The export sounds the same as the preview. It is mastered to a comfortable level with a true-peak ceiling of −1 dBTP, which usually makes it a few dB quieter than a loud commercial master — this keeps the song's dynamics intact.
 
