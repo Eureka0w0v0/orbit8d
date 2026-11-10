@@ -2,6 +2,7 @@
 出错时一律回 {code, message}（message 是英文技术说明，界面按 code 翻译）。"""
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -47,6 +48,14 @@ async def _refused(_: Request, exc: Refused) -> JSONResponse:
     return JSONResponse({"code": exc.code, "message": str(exc)}, status_code=REFUSAL_STATUS[exc.code])
 
 
+async def _invalid_request(_: Request, exc: RequestValidationError) -> JSONResponse:
+    """请求体或查询参数没通过校验。框架默认回 {detail: [...]}，界面认不出来；这里换成统一的格式。"""
+    first = exc.errors()[0]
+    where = ".".join(str(part) for part in first.get("loc", ()))
+    message = f"Invalid request: {where} {first.get('msg', '')}".strip()
+    return JSONResponse({"code": "INVALID_REQUEST", "message": message}, status_code=422)
+
+
 async def _media_error(_: Request, exc: MediaError) -> JSONResponse:
     return JSONResponse({"code": exc.code, "message": str(exc)}, status_code=400)
 
@@ -62,5 +71,6 @@ def install_guards(app: FastAPI, port: int) -> None:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)  # 最外层
     app.add_exception_handler(ApiError, _api_error)
     app.add_exception_handler(Refused, _refused)
+    app.add_exception_handler(RequestValidationError, _invalid_request)
     app.add_exception_handler(MediaError, _media_error)
     app.add_exception_handler(NotFound, _not_found)

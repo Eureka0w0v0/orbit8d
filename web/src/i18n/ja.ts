@@ -165,6 +165,7 @@ export const ja: Messages = {
     PROJECT_NOT_READY: "まだ処理中です",
     EXPORT_NOT_READY: "書き出しがまだ終わっていません",
     INVALID_SCENE: "設定値が正しくありません",
+    INVALID_REQUEST: "リクエストの内容が正しくありません",
     FORBIDDEN_ORIGIN: "別のサイトからのリクエストは拒否されました",
     NOT_FOUND: "見つかりません",
     INTERRUPTED: "前回の処理が中断されました。もう一度読み込むと再試行します",

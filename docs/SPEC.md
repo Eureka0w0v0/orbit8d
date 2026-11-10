@@ -197,7 +197,7 @@ shared/golden/ 跨语言一致性测试数据（Python 生成，TS 校验）
 
 - Host 头只接受 `127.0.0.1` / `localhost`。
 - 非 GET/HEAD/OPTIONS 请求若带 Origin，必须是本服务或 Vite 开发服务器（5173）的源，否则 403（防 CSRF）。
-- 错误响应统一为 `{code, message}`：message 是英文技术说明，界面按 code 显示当前语言的提示（`web/src/i18n` 的 error 表，不认识的 code 才显示 message）；路径里的 ID 必须是 16 位小写十六进制，否则 404。
+- 错误响应统一为 `{code, message}`（请求体或查询参数没通过校验时也是：422 `INVALID_REQUEST`，message 里写明哪个字段、为什么）：message 是英文技术说明，界面按 code 显示当前语言的提示（`web/src/i18n` 的 error 表，不认识的 code 才显示 message）；路径里的 ID 必须是 16 位小写十六进制，否则 404。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|

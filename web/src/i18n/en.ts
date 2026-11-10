@@ -168,6 +168,7 @@ export const en: Messages = {
     PROJECT_NOT_READY: "Still processing",
     EXPORT_NOT_READY: "The export is not finished yet",
     INVALID_SCENE: "Invalid scene settings",
+    INVALID_REQUEST: "The request is not valid",
     FORBIDDEN_ORIGIN: "Cross-site request refused",
     NOT_FOUND: "Not found",
     INTERRUPTED: "The last run was interrupted; import the song again to retry",

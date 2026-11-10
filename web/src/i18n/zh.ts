@@ -160,6 +160,7 @@ export const zh = {
     PROJECT_NOT_READY: "还在处理中",
     EXPORT_NOT_READY: "还没导出完成",
     INVALID_SCENE: "场景参数不合法",
+    INVALID_REQUEST: "请求内容不合法",
     FORBIDDEN_ORIGIN: "拒绝跨站请求",
     NOT_FOUND: "找不到",
     INTERRUPTED: "上次处理被中断，重新导入即可重试",

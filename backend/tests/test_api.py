@@ -260,6 +260,28 @@ def test_invalid_export_requests(client, ready_project):
     )
 
 
+def test_requests_that_fail_validation_get_the_usual_error_shape(client, ready_project):
+    """请求体、查询参数没通过校验时（框架自己查出来的）也回 {code, message}，界面才能按错误码提示。"""
+    scene = Scene().model_dump(mode="json")
+    bad_scene = {**scene, "rear_darken_db": 99}
+    base = f"/api/projects/{ready_project}"
+    answers = {
+        "scene out of range": client.post(f"{base}/exports", json={"scene": bad_scene, "format": "m4a"}),
+        "unknown format": client.post(f"{base}/exports", json={"scene": scene, "format": "exe"}),
+        "unknown field": client.post(f"{base}/exports", json={"scene": scene, "format": "wav", "x": 1}),
+        "eq": client.post(f"{base}/eq", json={"scene": bad_scene}),
+        "choreography": client.post(f"{base}/choreography", json={"scene": bad_scene}),
+        "not json": client.post(f"{base}/eq", content=b"{", headers={"Content-Type": "application/json"}),
+        "query": client.get("/api/presets/classic", params={"bars": "many"}),
+    }
+    bodies = {name: (resp.status_code, resp.json()) for name, resp in answers.items()}
+    for name, (status, body) in bodies.items():
+        assert status == 422 and set(body) == {"code", "message"}, name
+        assert body["code"] == "INVALID_REQUEST" and body["message"].startswith("Invalid request: "), name
+    assert "scene.rear_darken_db" in bodies["scene out of range"][1]["message"]
+    assert "format" in bodies["unknown format"][1]["message"] and "bars" in bodies["query"][1]["message"]
+
+
 def test_rendered_export_moves_sound_between_ears(client, ready_project, tmp_path):
     """冒烟：导出的 wav 里，两耳能量差确实随时间变化（声音在转）。"""
     resp = client.post(
