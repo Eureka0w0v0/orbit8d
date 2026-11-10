@@ -1640,6 +1640,38 @@
    "graph": []
   },
   {
+   "step": "export again, then close the dialog while it renders",
+   "dom": {
+    "phase": "ready",
+    "listen": "8d",
+    "save": "saved",
+    "playing": false,
+    "title": "probe-song-a.wav",
+    "duration": "0:20",
+    "undo": false,
+    "redo": false,
+    "overlay": "hidden",
+    "dialog": false,
+    "menu": false,
+    "songs": 2,
+    "selected": 0,
+    "muted": [
+     false,
+     true,
+     false,
+     false
+    ],
+    "tab": "orbit",
+    "shape": "ellipse",
+    "room": "",
+    "sections": 1,
+    "events": 0
+   },
+   "params": {},
+   "messages": [],
+   "graph": []
+  },
+  {
    "step": "delete the song that is not open",
    "dom": {
     "phase": "ready",

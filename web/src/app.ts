@@ -151,7 +151,7 @@ export class App {
       (file) => void this.importFile(file),
       (next) => void this.changeLanguage(next),
     );
-    this.exportDialog = new ExportDialog();
+    this.exportDialog = new ExportDialog(() => this.exporter.cancel()); // 关掉对话框就不再等这次导出
     this.timeline = new TimelineStrip({
       scrubStart: (t) => this.scrubStart(t),
       scrub: (t) => this.scrub(t),

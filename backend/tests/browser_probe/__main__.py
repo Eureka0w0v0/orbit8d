@@ -140,7 +140,8 @@ def run(work: Path, port: int) -> tuple[list[dict], list[str], dict]:
         )
         injected = "\n".join((HERE / name).read_text(encoding="utf-8") for name in ("recorder.js", "ui.js"))
         page = Page(cdp, injected)
-        session = Session(page, backend.url, songs, work / "downloads", backend.stop, backend.start)
+        exports = work / "data" / "exports"
+        session = Session(page, backend.url, songs, work / "downloads", exports, backend.stop, backend.start)
         try:
             walk(session)
         except (Failure, PageError, CdpError) as exc:

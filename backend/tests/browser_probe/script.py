@@ -25,6 +25,7 @@ SETTLE_TIMEOUT_S = 90
 EDIT_GAP_MS = 700  # 两次修改至少隔这么久：不到 0.5 秒的连续修改会并成一步撤销
 MIN_DOWNLOAD_BYTES = 10_000
 POSITION_TOLERANCE_S = 0.3
+AFTER_EXPORT_MS = 2500  # 导出做完之后再等这么久（前端每 0.7 秒问一次进度）：该来的下载早就来了
 ALL_AUDIBLE = [False, False, False, False]
 DRUMS_MUTED = [False, True, False, False]
 # 意料之中的“错误”：还没保存过场景的歌 GET /scene 是 404（前端据此改用自动编排）；应用没有 favicon
@@ -60,6 +61,7 @@ class Session:
     url: str
     songs: tuple[Path, Path]
     downloads: Path
+    exports: Path  # 后台存导出记录的目录：探针直接看它，知道一次导出什么时候做完
     stop_backend: Callable[[], None]
     start_backend: Callable[[], None]
     steps: list[dict] = field(default_factory=list)
@@ -306,16 +308,44 @@ def export(s: Session, song: Path) -> None:
         wait_for_download(s.downloads)
         page.click(".dialog .actions button.ghost")
         s.wait_state("the dialog to close", dialog=False)
+    with s.step("export again, then close the dialog while it renders"):
+        downloaded, records = finished_downloads(s.downloads), len(list(s.exports.glob("*/record.json")))
+        s.press("export")
+        s.wait_state("the export dialog", dialog=True)
+        page.click('.dialog input[name="loudness"][value="standard"]')  # 换个响度：是一次新的导出，要重新渲染
+        page.click(".dialog .actions button.primary")
+        page.click(".modal")  # 点对话框外面的遮罩：关掉对话框
+        s.wait_state("the dialog to close", dialog=False)
+        wait_for_exports(s.exports, records + 1)  # 后台照常把它做完
+        page.run(f"__probe.sleep({AFTER_EXPORT_MS})")
+        if finished_downloads(s.downloads) != downloaded:
+            raise Failure("the export dialog was closed, but its file was downloaded anyway")
+        s.expect("the dialog stays closed", dialog=False)
+
+
+def finished_downloads(folder: Path) -> int:
+    files = [f for f in folder.iterdir() if f.suffix != ".crdownload"]
+    return sum(f.stat().st_size >= MIN_DOWNLOAD_BYTES for f in files)
 
 
 def wait_for_download(folder: Path, timeout: float = 60) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        files = [f for f in folder.iterdir() if f.suffix != ".crdownload"]
-        if any(f.stat().st_size >= MIN_DOWNLOAD_BYTES for f in files):
+        if finished_downloads(folder):
             return
         time.sleep(0.2)
     raise PageError(f"no finished download of at least {MIN_DOWNLOAD_BYTES} bytes appeared")
+
+
+def wait_for_exports(folder: Path, count: int, timeout: float = 120) -> None:
+    """等后台把第 count 个导出做完（直接读它的记录文件）。"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        states = [json.loads(f.read_text(encoding="utf-8"))["state"] for f in folder.glob("*/record.json")]
+        if len(states) >= count and all(state in ("DONE", "FAILED") for state in states):
+            return
+        time.sleep(0.2)
+    raise PageError(f"the backend did not finish {count} exports in time")
 
 
 def delete_songs(s: Session) -> None:

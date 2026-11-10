@@ -221,7 +221,8 @@ export class ExportDialog {
   readonly el: HTMLDivElement;
   private readonly body: HTMLDivElement;
 
-  constructor() {
+  /** onClose：对话框关掉了（点了关闭、点了外面，或者歌被关掉）。 */
+  constructor(private readonly onClose: () => void) {
     this.body = h("div", { class: "dialog-body" });
     this.el = h("div", { class: "modal hidden" }, h("div", { class: "dialog" }, h("h2", {}, TEXT.exportTitle), this.body));
     this.el.addEventListener("click", (e) => e.target === this.el && this.close());
@@ -267,5 +268,6 @@ export class ExportDialog {
 
   close(): void {
     this.el.classList.add("hidden");
+    this.onClose();
   }
 }
