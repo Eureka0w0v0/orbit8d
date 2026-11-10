@@ -29,7 +29,7 @@ from orbit8d.engine.pipeline import (
     Sources,
     analyze,
 )
-from orbit8d.engine.scene import Scene
+from orbit8d.engine.scene import TRACKS, Scene
 from orbit8d.errors import CodedError
 from orbit8d.jobs.states import ExportState, IllegalTransition, ProjectState
 from orbit8d.jobs.store import NotFound, ProjectRecord, Store
@@ -47,7 +47,6 @@ ORIGINAL_PREVIEW = "original"
 ANALYSIS_FILE = "analysis.json"
 RENDER_FILE = "render.wav"
 OUTPUT_STEM = "output"
-STEM_NAMES = ("vocals", "drums", "bass", "other")
 PREVIEW_SUBTYPE = STEM_SUBTYPE = "PCM_24"
 FLAC_TOLERANCE_LSB = 4  # 24 位 FLAC 读回与原值的允许误差（量化 + 读写归一化差，实际约 1.5 个最低位）
 POLL_S = 0.2
@@ -215,7 +214,7 @@ class JobRunner:
         """分轨 32 位浮点 WAV → 24 位 FLAC（约省一半空间）：每轨缩放到 ±1 以内，读回校验通过、
         缩放系数写进记录之后才删 WAV。可以重复执行（迁移到一半崩溃后再跑一遍即可）。"""
         stems_dir = self._store.project_dir(pid) / STEMS_DIR
-        for name in STEM_NAMES:
+        for name in TRACKS:
             wav = stems_dir / f"{name}.wav"
             if not wav.exists():
                 continue

@@ -35,6 +35,7 @@ from orbit8d.engine.master import (
     measure,
     with_band_gains,
 )
+from orbit8d.engine.orbit import bar_seconds
 from orbit8d.engine.render import (
     BLOCK,
     BlockPath,
@@ -54,7 +55,6 @@ from orbit8d.engine.structure import (
     MixFeatures,
     SectionInfo,
     StructureInputs,
-    bar_seconds,
     complete_bars,
     sections_from,
 )

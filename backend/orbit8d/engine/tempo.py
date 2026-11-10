@@ -10,14 +10,13 @@ from scipy.ndimage import maximum_filter1d, uniform_filter1d
 from scipy.signal import stft
 
 from orbit8d.engine.chunks import Framer, chunk_ranges
-from orbit8d.engine.orbit import BEATS_PER_BAR, normalize_bpm
+from orbit8d.engine.orbit import BAR_CHOICES, bar_seconds, normalize_bpm
 
 TEMPO_RANGE_BPM = (60.0, 180.0)
 COARSE_STEP_BPM = 0.05
 FINE_STEP_BPM = 0.002
 BEAT_TOLERANCE_S = 0.04  # 每拍前后 40 ms 内取最强起音
 TARGET_TURN_S = 7.0
-TURN_BAR_CHOICES = (1, 2, 4, 8)
 FALLBACK_BPM = 120.0  # 没有鼓（如清唱）时的默认速度
 HOP = 256
 NFFT = 2048
@@ -96,8 +95,8 @@ def tempo_from_onsets(flux: np.ndarray, t: np.ndarray, sr: int) -> TempoInfo:
 
 def turn_plan(info: TempoInfo) -> tuple[int, float]:
     """返回 (默认小节数, 正前方对齐时刻 t_ref)。"""
-    bar_s = BEATS_PER_BAR * 60.0 / info.bpm_norm
-    bars = min(TURN_BAR_CHOICES, key=lambda n: abs(n * bar_s - TARGET_TURN_S))
+    bar_s = bar_seconds(info.bpm_norm)
+    bars = min(BAR_CHOICES, key=lambda n: abs(n * bar_s - TARGET_TURN_S))
     beat = 60.0 / info.bpm
     per_turn = max(1, round(bars * bar_s / beat))
     if len(info.strength) < per_turn:

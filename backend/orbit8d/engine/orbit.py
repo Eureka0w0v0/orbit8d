@@ -10,6 +10,7 @@ import numpy as np
 
 SHAPES = ("circle", "ellipse", "pendulum", "figure8", "spiral", "fixed")
 BEATS_PER_BAR = 4
+BAR_CHOICES = (1, 2, 4, 8)  # 一圈可以取几小节：默认转速、预设接口都从这里取（场景模型的 Speed.bars 与之一致）
 BPM_NORM_LOW = 70.0
 BPM_NORM_HIGH = 140.0
 SPIRAL_TURNS_PER_CYCLE = 4.0  # 螺旋：每 4 圈完成一次升降
@@ -48,6 +49,11 @@ def normalize_bpm(bpm: float) -> float:
     while bpm >= BPM_NORM_HIGH:
         bpm /= 2.0
     return bpm
+
+
+def bar_seconds(bpm_norm: float) -> float:
+    """一小节的时长（秒）。"""
+    return BEATS_PER_BAR * 60.0 / bpm_norm
 
 
 def period_seconds(mode: str, bars: int, seconds: float, bpm_norm: float) -> float:

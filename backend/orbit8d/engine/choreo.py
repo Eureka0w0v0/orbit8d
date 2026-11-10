@@ -14,6 +14,7 @@ from collections.abc import Callable
 
 import numpy as np
 
+from orbit8d.engine.orbit import bar_seconds
 from orbit8d.engine.scene import (
     HOLD_RAMP_S,
     MAX_BARS,
@@ -32,7 +33,6 @@ from orbit8d.engine.structure import (
     VERSE,
     WHOLE,
     SectionInfo,
-    bar_seconds,
 )
 
 AMBIENT_HEIGHT_DEG = 35.0

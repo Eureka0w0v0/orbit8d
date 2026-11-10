@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from orbit8d.engine.orbit import BEATS_PER_BAR, OrbitParams, position_at_phase
+from orbit8d.engine.orbit import OrbitParams, bar_seconds, position_at_phase
 from orbit8d.engine.scene import HOLD_RAMP_S, Scene, orbit_params
 
 TRANSITION_BARS = 1.0
@@ -42,7 +42,7 @@ class TrackMotion:
 
 
 def _half_widths(starts: np.ndarray, bpm_norm: float, duration_s: float) -> np.ndarray:
-    bar = BEATS_PER_BAR * 60.0 / bpm_norm
+    bar = bar_seconds(bpm_norm)
     ends = np.append(starts[1:], max(duration_s, starts[-1]))
     lengths = ends - starts
     half = np.zeros(len(starts))

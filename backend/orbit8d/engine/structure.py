@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 import numpy as np
 
 from orbit8d.engine.chunks import Framer, SegmentSums, chunk_ranges
-from orbit8d.engine.orbit import BEATS_PER_BAR
+from orbit8d.engine.orbit import bar_seconds
 
 FRAME = 4096
 HOP = 2048
@@ -72,10 +72,6 @@ def loudness_envelope(x: np.ndarray, sr: int, hop_s: float = ENVELOPE_HOP_S) -> 
     for s, e in chunk_ranges(len(x)):
         envelope.push(x[s:e])
     return envelope.result()
-
-
-def bar_seconds(bpm_norm: float) -> float:
-    return BEATS_PER_BAR * 60.0 / bpm_norm
 
 
 def bar_starts(duration_s: float, bpm_norm: float, t_ref: float) -> np.ndarray:

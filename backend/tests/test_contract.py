@@ -6,11 +6,10 @@ from typing import get_args
 
 from fastapi.testclient import TestClient
 
-from orbit8d.api.app import BAR_CHOICES, PREVIEW_NAMES, ExportRequest, create_app
+from orbit8d.api.app import PREVIEW_NAMES, ExportRequest, create_app
 from orbit8d.config import load_settings
 from orbit8d.engine import choreo
 from orbit8d.engine.scene import MAX_BARS, TrackName
-from orbit8d.jobs.worker import STEM_NAMES
 from tests.conftest import FakeSeparator
 from tests.make_golden import CONTRACT_FILE, contract, contract_json
 
@@ -42,11 +41,9 @@ def test_backend_copies_agree_with_the_contract():
     c = contract()
     copies = {
         "scene.TrackName": (list(get_args(TrackName)), c["tracks"]),
-        "worker.STEM_NAMES": (list(STEM_NAMES), c["tracks"]),
         "Orbit.shape": (_field(c, "Orbit", "shape")["enum"], c["shapes"]),
         "Room.name": (_field(c, "Room", "name")["enum"], c["rooms"]),
         "Speed.bars": (_field(c, "Speed", "bars")["enum"], c["bar_choices"]),
-        "api.BAR_CHOICES": (list(BAR_CHOICES), c["bar_choices"]),
         "scene.MAX_BARS": (MAX_BARS, max(c["bar_choices"])),
         "ExportRequest.format": (_literal(ExportRequest, "format"), c["export_formats"]),
         "ExportRequest.loudness": (_literal(ExportRequest, "loudness"), c["loudness"]),

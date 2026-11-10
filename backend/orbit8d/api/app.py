@@ -24,6 +24,7 @@ from orbit8d.assets import ensure_hrtf_sofa, prune_stale_assets
 from orbit8d.config import REPO_ROOT, SAMPLE_RATE, Settings
 from orbit8d.engine.choreo import choreograph, rechoreograph
 from orbit8d.engine.hrtf import load_grid, to_bytes
+from orbit8d.engine.orbit import BAR_CHOICES
 from orbit8d.engine.pipeline import RENDER_VERSION, Analysis, Renderer
 from orbit8d.engine.reverb import BRIR_VERSION, ROOMS
 from orbit8d.engine.scene import PRESETS, Scene, canonical_json, preset
@@ -51,7 +52,6 @@ PREVIEW_NAMES = frozenset(
     {"vocals_hi", "bass_hi", "drums_hi", "other_hi", "bass_sub", "drums_sub", "other_sub", ORIGINAL_PREVIEW}
 )
 MAX_SCENE_BYTES = 256 * 1024  # 场景 JSON 最多约 30 KB（16 段 × 4 轨 + 64 个事件），留足余量
-BAR_CHOICES = (1, 2, 4, 8)
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 WEB_DIST = REPO_ROOT / "web" / "dist"
 
