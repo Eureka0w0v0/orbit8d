@@ -1,47 +1,30 @@
 """单工位任务队列：分析、导出、存储迁移按提交顺序串行执行（分轨独占 GPU，也避免多份整曲数据同时占内存）。
-
-存储（SPEC §5.7、§6）：分轨存 24 位 FLAC（每轨各自的缩放系数记在项目记录里，读回校验通过才删 WAV）；
-解码出的 orig.wav 只在分析期间存在，用完即删，要重新分析时从上传的原文件再解码。
-同一首歌有 WAV 就用 WAV：迁移中途崩溃时，WAV 只会在它的 FLAC 和缩放系数都写好之后才删。
-"""
+音频文件怎么存、怎么读见 jobs/stems.py；解码出的 orig.wav 只在分析期间存在，用完即删，
+要重新分析时从上传的原文件再解码。"""
 
 import json
 import logging
 import queue
 import re
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-import numpy as np
-
 from orbit8d.config import SAMPLE_RATE
-from orbit8d.engine.chunks import aligned_windows, chunk_ranges
-from orbit8d.engine.pipeline import (
-    ANALYSIS_VERSION,
-    PREVIEW_FILES,
-    SEPARATED_TRACKS,
-    SOURCE_CHANNELS,
-    Analysis,
-    Renderer,
-    Sources,
-    analyze,
-)
-from orbit8d.engine.scene import TRACKS, Scene
+from orbit8d.engine.pipeline import ANALYSIS_VERSION, SEPARATED_TRACKS, Analysis, Renderer, analyze
+from orbit8d.engine.scene import Scene
 from orbit8d.errors import CodedError
-from orbit8d.jobs.layout import ORIGINAL_PREVIEW, ProjectFiles
 from orbit8d.jobs.states import ExportState, IllegalTransition, ProjectState
-from orbit8d.jobs.store import NotFound, ProjectRecord, Store
+from orbit8d.jobs.stems import compress_stems, needs_migration, preview_chunks, stem_file, write_previews
+from orbit8d.jobs.store import NotFound, Store
 from orbit8d.logging_setup import trace
 from orbit8d.media.audiofile import AudioFile, write_audio
 from orbit8d.media.ffmpeg import OUTPUT_FORMATS, decode_to_wav, encode
 
 log = logging.getLogger(__name__)
 
-PREVIEW_SUBTYPE = STEM_SUBTYPE = "PCM_24"
-FLAC_TOLERANCE_LSB = 4  # 24 位 FLAC 读回与原值的允许误差（量化 + 读写归一化差，实际约 1.5 个最低位）
 POLL_S = 0.2
 ANALYZED_PROGRESS = 0.7
 STEP_MODEL_DOWNLOAD = "model_download"  # 分轨阶段里第一次下载模型（界面单独显示）
@@ -135,7 +118,7 @@ class JobRunner:
         old = [
             rec
             for rec in self._store.list_projects()
-            if rec.state is ProjectState.READY and self._unmigrated(rec.id)
+            if rec.state is ProjectState.READY and needs_migration(self._store.project_files(rec.id))
         ]
         for rec in old:
             self.submit("migrate", rec.id, rec.id)
@@ -144,10 +127,6 @@ class JobRunner:
                 extra={"event": "project.migrate", "project_id": rec.id},
             )
         return len(old)
-
-    def _unmigrated(self, pid: str) -> bool:
-        files = self._store.project_files(pid)
-        return files.decoded.exists() or any(files.stems.glob("*.wav"))
 
     def wait_idle(self, timeout: float) -> bool:
         with self._cond:
@@ -193,58 +172,10 @@ class JobRunner:
                 log.exception("job crashed", extra={"event": "job.crash", "kind": job.kind})
                 fail(job.id, "INTERNAL", f"{type(exc).__name__}: {exc}")
 
-    @staticmethod
-    def _stem_file(pdir: Path, name: str, rec: ProjectRecord) -> AudioFile:
-        """有 WAV 用 WAV（还没迁移或迁移到一半），否则用 FLAC × 记录里的缩放系数。"""
-        files = ProjectFiles(pdir)
-        wav = files.stem_wav(name)
-        if wav.exists():
-            return AudioFile(wav)
-        if name not in rec.stem_scales:
-            raise FileNotFoundError(f"{name} 分轨缺少缩放系数，无法读取 FLAC")
-        return AudioFile(files.stem_flac(name), rec.stem_scales[name])
-
     def _compress_stems(self, pid: str) -> None:
-        """分轨 32 位浮点 WAV → 24 位 FLAC（约省一半空间）：每轨缩放到 ±1 以内，读回校验通过、
-        缩放系数写进记录之后才删 WAV。可以重复执行（迁移到一半崩溃后再跑一遍即可）。"""
-        files = self._store.project_files(pid)
-        for name in TRACKS:
-            wav = files.stem_wav(name)
-            if not wav.exists():
-                continue
-            source = AudioFile(wav)
-            scale = max(1.0, max(float(np.abs(w.body).max(initial=0.0)) for w in source.windows()))
-            flac = files.stem_flac(name)
-            write_audio(
-                flac, (w.body / scale for w in source.windows()), source.channels, SAMPLE_RATE, STEM_SUBTYPE
-            )
-            _verify_copy(source, AudioFile(flac, scale), FLAC_TOLERANCE_LSB * scale / 2**23)
-            self._store.set_stem_scale(pid, name, scale)
-            wav.unlink()
-
-    @staticmethod
-    def _preview_chunks(files: ProjectFiles, scale: float) -> tuple[int, Iterator[np.ndarray]]:
-        """试听文件 × scale → 按段的 9 路声源 (9, L)，与浏览器试听同一份数据。"""
-        previews = [AudioFile(files.preview(name), scale) for name in PREVIEW_FILES]
-
-        def chunks() -> Iterator[np.ndarray]:
-            for windows in aligned_windows(previews):
-                chunk = np.empty((len(SOURCE_CHANNELS), windows[0].end - windows[0].start))
-                for channels, w in zip(PREVIEW_FILES.values(), windows, strict=True):
-                    chunk[list(channels)] = w.body.T
-                yield chunk
-
-        return previews[0].frames, chunks()
-
-    @staticmethod
-    def _write_previews(files: ProjectFiles, src: Sources, orig: AudioFile, scale: float) -> None:
-        """9 路声源 + 原曲（A/B 对比用）写成 24 位 FLAC，统一除以 scale 保证不超过 ±1。"""
-        files.previews.mkdir(exist_ok=True)
-        for name, channels in PREVIEW_FILES.items():
-            parts = (src.data[list(channels), s:e].T / scale for s, e in chunk_ranges(src.n))
-            write_audio(files.preview(name), parts, len(channels), SAMPLE_RATE, PREVIEW_SUBTYPE)
-        parts = (w.body / scale for w in orig.windows())
-        write_audio(files.preview(ORIGINAL_PREVIEW), parts, orig.channels, SAMPLE_RATE, PREVIEW_SUBTYPE)
+        """分轨压成 FLAC；每轨的缩放系数写进项目记录之后，那一轨的 WAV 才会被删。"""
+        store = self._store
+        compress_stems(store.project_files(pid), lambda name, scale: store.set_stem_scale(pid, name, scale))
 
     def _run_analysis(self, pid: str) -> None:
         store, files = self._store, self._store.project_files(pid)
@@ -290,11 +221,11 @@ class JobRunner:
         store, files = self._store, self._store.project_files(pid)
         rec = store.get_project(pid)
         orig = AudioFile(files.decoded)
-        stems = {name: self._stem_file(files.root, name, rec) for name in SEPARATED_TRACKS}
+        stems = {name: stem_file(files, name, rec.stem_scales) for name in SEPARATED_TRACKS}
         result = analyze(orig, stems, SAMPLE_RATE, self._renderer)
         store.set_project_progress(pid, ANALYZED_PROGRESS)
         scale = max(1.0, result.peak)  # 24 位 FLAC 不能超过 ±1：所有试听文件统一缩放
-        self._write_previews(files, result.sources, orig, scale)
+        write_previews(files, result.sources, orig, scale)
         files.analysis.write_text(result.analysis.to_json(), encoding="utf-8")
         store.transition_project(
             pid, ProjectState.READY, analysis=json.loads(result.analysis.to_json()), preview_scale=scale
@@ -305,7 +236,7 @@ class JobRunner:
         rec = store.transition_export(eid, ExportState.RENDERING)
         project = store.get_project(rec.project_id)
         files, out = store.project_files(project.id), store.export_files(eid)
-        n, chunks = self._preview_chunks(files, project.preview_scale)
+        n, chunks = preview_chunks(files, project.preview_scale)
         mastered = self._renderer.export_chunks(
             chunks, n, Scene.model_validate(rec.scene), Analysis(**project.analysis), rec.loudness
         )
@@ -318,13 +249,3 @@ class JobRunner:
         finally:
             out.render.unlink(missing_ok=True)
         store.transition_export(eid, ExportState.DONE, file_name=export_file_name(project.source, fmt.ext))
-
-
-def _verify_copy(original: AudioFile, copy: AudioFile, tolerance: float) -> None:
-    """逐段比对两份音频，误差超过 tolerance 就报错（不删原文件）。"""
-    if (copy.frames, copy.channels) != (original.frames, original.channels):
-        raise ValueError(f"{copy.path.name} 的长度或声道数与原文件不一致")
-    for a, b in zip(original.windows(), copy.windows(), strict=True):
-        err = float(np.abs(a.body - b.body).max(initial=0.0))
-        if err > tolerance:
-            raise ValueError(f"{copy.path.name} 读回校验失败：误差 {err:.3g} > {tolerance:.3g}")

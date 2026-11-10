@@ -364,12 +364,11 @@ def test_stems_round_trip_through_flac_with_their_scale(client, data_dir, tmp_pa
     wait_idle(client)
     record = client.get(f"/api/projects/{pid}").json()
     assert record["state"] == "READY" and record["stem_scales"]["bass"] > 1.0
-    from orbit8d.jobs.store import ProjectRecord
-    from orbit8d.jobs.worker import JobRunner
+    from orbit8d.jobs.layout import ProjectFiles
+    from orbit8d.jobs.stems import stem_file
 
-    rec = ProjectRecord.from_dict(record)
-    pdir = data_dir / "projects" / pid
-    bass = np.concatenate([w.body for w in JobRunner._stem_file(pdir, "bass", rec).windows()])
+    files = ProjectFiles(data_dir / "projects" / pid)
+    bass = np.concatenate([w.body for w in stem_file(files, "bass", record["stem_scales"]).windows()])
     expected = sosfiltfilt(butter(4, 150, "lowpass", fs=sr, output="sos"), x * 6.0, axis=0)
     assert np.abs(bass - expected).max() < 4 * record["stem_scales"]["bass"] / 2**23
 
@@ -404,7 +403,7 @@ def test_old_storage_is_migrated_on_startup_and_stays_usable(client, ready_proje
 
 
 def test_migration_keeps_the_wav_when_verification_fails(client, ready_project, data_dir, monkeypatch):
-    from orbit8d.jobs import worker
+    from orbit8d.jobs import stems
 
     pdir = data_dir / "projects" / ready_project
     flac = pdir / "stems" / "vocals.flac"
@@ -414,7 +413,7 @@ def test_migration_keeps_the_wav_when_verification_fails(client, ready_project, 
     def broken_verify(original, copy, tolerance):
         raise ValueError("simulated corruption")
 
-    monkeypatch.setattr(worker, "_verify_copy", broken_verify)
+    monkeypatch.setattr(stems, "verify_copy", broken_verify)
     runner = client.app.state.runner
     assert runner.migrate_storage() == 1
     wait_idle(client)
