@@ -26,8 +26,9 @@ data/）的 assets 只读软链接过来，分轨模型用不到。
 
 归一化与不比的量：
 - 节点按创建次序编号（gain1、source2…），不依赖对象身份。
-- 时间：同一段同步代码里出现的第一个时间记成 @now 或 @now+0.06（相对 currentTime，按 30 ms 取整——
-  currentTime 在主线程读两次可能差一两个渲染量子），其余时间记成相对它的差（精确到 0.1 ms）。
+- 时间：同一段同步代码里出现的第一个时间记成 @now 或 @now+0.06（相对 currentTime，按 30 ms 取整），
+  其余时间记成相对它的差（精确到 0.1 ms）。Chrome 里 currentTime 在同一段同步代码中读两次可能差一个渲染量子，
+  而引擎安排一次淡出要读好几次；探针让同一段同步代码里读到的 currentTime 保持不变，记录才不会抖动。
 - 数值保留 3 位小数。cancelScheduledValues 之后紧跟的 setValueAtTime 的值是“当时读到的当前值”，取决于
   操作落在淡入淡出的哪一刻，记成 <current>，不比。
 - 不比：声源 start 的 offset、Worklet 消息的内容（startFrame、songOffset、渲染参数）、播放位置的具体秒数、

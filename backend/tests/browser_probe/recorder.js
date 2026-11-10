@@ -49,6 +49,25 @@
     lastCall.set(param, { group, method });
   }
 
+  // ---- the clock ----
+  // Chrome lets currentTime tick over (by one render quantum) between two reads in the same piece of
+  // synchronous code, and the app reads it several times while scheduling one fade. Under the probe every
+  // read within one synchronous burst returns the first value, so the recorded times do not jitter.
+  const clock = Object.getOwnPropertyDescriptor(BaseAudioContext.prototype, "currentTime");
+  let frozenTime = null;
+  Object.defineProperty(BaseAudioContext.prototype, "currentTime", {
+    ...clock,
+    get() {
+      if (frozenTime === null) {
+        frozenTime = clock.get.call(this);
+        queueMicrotask(() => {
+          frozenTime = null;
+        });
+      }
+      return frozenTime;
+    },
+  });
+
   // ---- AudioParam ----
   const paramProto = AudioParam.prototype;
   const describe = {
